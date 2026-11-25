@@ -532,7 +532,7 @@ def shell(*, title: str, description: str, body: str, current: str,
     main = f'<div class="landing">{body}</div>' if landing else body
 
     return f"""<!doctype html>
-<html lang="en">
+<html lang="en" data-title-en="{html.escape(title)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

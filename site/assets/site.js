@@ -161,6 +161,32 @@
     }
   }
 
+  var originalTitle = null;
+  var BRAND = " · Inside Zed";
+  var BRAND_FR = " · Dans Zed";
+
+  /* The English title travels on the root element, so a browser that rewrites
+   * <title> itself cannot corrupt the key we look up. Dictionary keys hold the
+   * bare heading; the brand suffix is re-applied here. */
+  function sourceTitle() {
+    return document.documentElement.getAttribute("data-title-en") || "";
+  }
+
+  function translateTitle(table) {
+    var el = document.querySelector("title");
+    if (!el) return;
+    var key = sourceTitle();
+    if (!key) return;
+    if (originalTitle === null) originalTitle = key;
+    var hit = table[norm(key)];
+    if (typeof hit === "string" && hit !== norm(key)) el.textContent = hit + BRAND_FR;
+  }
+
+  function restoreTitle() {
+    var el = document.querySelector("title");
+    if (el && originalTitle !== null) el.textContent = originalTitle + BRAND;
+  }
+
   function restore() {
     if (original) {
       for (var i = 0; i < original.length; i++) original[i][0].nodeValue = original[i][1];
@@ -188,9 +214,11 @@
         if (!original) snapshot();
         restore();
         translate(document.body, table, false);
+        translateTitle(table);
       });
     } else {
       restore();
+      restoreTitle();
     }
   }
 
