@@ -1,0 +1,5 @@
+[toolchain]
+# Same toolchain the pinned upstream commit declares in its own
+# rust-toolchain.toml. Verified: `cargo test --release` builds and passes
+# all six adversarial tests on 1.100.0 with no nightly features required.
+channel = "1.100.0"

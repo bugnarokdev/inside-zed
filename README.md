@@ -20,13 +20,35 @@ An independent, source-based exploration of [Zed](https://github.com/zed-industr
 | [Text engine](docs/text-engine.html) | Buffer, snapshots, fragments, history, and storage | In progress |
 | [Edit lifecycle](docs/edit-lifecycle.html) | End-to-end trace: operations, fragments, anchors, undo, and remote replay | Deep dive |
 | [Collaboration lab](docs/collaboration-lab.html) | Three replicas, divergent delivery orders, deferred operations, and convergence tests | Test trace |
-| [Invariants & adversarial testing](docs/invariants-and-adversarial-testing.html) | Audit of structural checks, randomized convergence, known regressions, and conflict test matrix | Engineering audit |
+| [Invariants & adversarial testing](docs/invariants-and-adversarial-testing.html) | Audit of structural checks, randomized convergence, known regressions, and the executed adversarial matrix | Engineering audit, 6 tests executed |
+| [Measured, not guessed](docs/measurements.html) | Insert latency vs document size, offset lookup cost, undo grouping, and rope chunk geometry | Real run, raw output committed |
 | [Locator deep dive](docs/locator.html) | Stable ordering positions and insertion patterns | Initial notes |
 | SumTree | Aggregated summaries, dimensions, cursors, and mutation | In progress |
 | Rope | Chunk storage, bitmap indexes, and coordinate conversion | In progress |
 | GPUI | Rendering, layout, events, and platform integration | To investigate |
 
 **[Open the Inside Zed research site →](https://bugnarokdev.github.io/inside-zed/)**
+
+## Executed evidence
+
+This repository does not only read Zed's source - it runs it. Two artefacts back the claims on the site:
+
+**1. Six adversarial concurrency tests** (`harness/tests/`) executed against the real `text` crate, each asserting Zed's own `Buffer::check_invariants()`. Includes the permutation case: three insertions at one cursor delivered in all six orders, converging to `"aCBAb"`, with tie-breaking traced to `Lamport::cmp` in `crates/clock/src/clock.rs`.
+
+**2. A measurement harness** (`harness/src/main.rs`) linked against the pinned source, producing the latencies published on the site. Raw run output is committed at `harness/results/release-run.txt`.
+
+### Reproducing
+
+```sh
+./tools/setup-zed.sh            # sparse, blob-filtered checkout of the pin
+cd harness && cargo test --release          # 6 tests
+cd harness && cargo build --release \
+  && ./target/release/inside-zed-harness    # measurements
+```
+
+Requires network access to GitHub. Uses Rust 1.100.0, the same toolchain the pinned upstream commit declares in its own `rust-toolchain.toml`: `harness/rust-toolchain.toml` pins it, and all six tests build and pass on it with no nightly features required.
+
+Everything is pinned to upstream `2664a0aa1eae5dabf8f8273c03f88d53061ca7dc`. Nothing in the upstream tree is modified: the harness links Zed's crates by path, and the CI job applies a patch to a throwaway checkout.
 
 ## Evidence standard
 

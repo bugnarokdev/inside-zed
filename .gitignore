@@ -1,0 +1,9 @@
+# Vendor checkout and build artefacts are never committed.
+# tools/setup-zed.sh materialises vendor/zed from a pinned upstream revision.
+/vendor/
+/harness/target/
+
+# Rust
+**/*.rs.bk
+# Cargo.lock IS committed: this is a binary crate, and the lock file pins the
+# exact dependency graph used for the published measurements.

@@ -20,7 +20,7 @@
 </style>
 </head>
 <body>
-<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./index.html">Overview</a><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
 <div class="pagehead"><div class="wrap"><div class="crumb">ENGINE ROOM / 07 · ENGINEERING AUDIT</div><h1>Invariants<br>under pressure.</h1><p>What does Zed's text engine actually check? What do its convergence tests exercise? And where do the current tests leave room for adversarial cases?</p><div class="hero-meta"><span class="pill">UPSTREAM 2664a0aa1eae</span><span class="pill">TEXT / CLOCK / NETWORK</span><span class="pill">SOURCE AUDIT + TEST PLAN</span></div></div></div>
 <main class="wrap content"><article class="article">
 <h2 id="thesis">The engineering question</h2>
@@ -188,32 +188,49 @@ fn test_concurrent_delete_preserves_unobserved_insert() {
 </div>
 <p>This is the evidence boundary. It neither dismisses the implementation nor claims more than the inspected tests show.</p>
 
-<h2 id="harness">9. Experimental test harness</h2>
-<p>The five deterministic test cases in the matrix have been prepared as a separate patch. The patch is applied in CI to a clean checkout of the pinned upstream revision, then the full <code>text</code> crate test suite is invoked. No source file in the upstream repository is committed or changed by this research project.</p>
+<h2 id="harness">9. Executed evidence: two independent runs</h2>
+<p>Two separate executions back the claims on this page. They are not interchangeable, and neither is an estimate.</p>
+
+<h3>Run 1 - patch applied to a clean upstream checkout (CI)</h3>
+<p>The five deterministic cases were packaged as a patch. A GitHub Actions job checks out the pinned revision, validates the patch with <code>git apply --check</code>, applies it, then runs the full crate suite. No upstream file is committed by this project.</p>
 <ul>
 <li><a href="https://github.com/bugnarokdev/inside-zed/blob/research/adversarial-tests-ci/research/patches/text-adversarial-tests.patch" target="_blank" rel="noreferrer">Adversarial Rust test patch ↗</a></li>
 <li><a href="https://github.com/bugnarokdev/inside-zed/blob/research/adversarial-tests-ci/.github/workflows/zed-text-adversarial.yml" target="_blank" rel="noreferrer">CI workflow ↗</a></li>
-<li><a href="https://github.com/bugnarokdev/inside-zed/actions/runs/45544928667" target="_blank" rel="noreferrer">Current CI run ↗</a></li>
+<li><a href="https://github.com/bugnarokdev/inside-zed/actions/runs/45544928667" target="_blank" rel="noreferrer">CI run ↗</a></li>
 </ul>
-<div class="callout verified"><p><strong>RUN RESULT: GREEN</strong> - GitHub Actions completed successfully on the pinned upstream checkout. The full <code>cargo test -p text</code> run reported <strong>43 passed, 0 failed</strong>. All five adversarial tests passed. Runtime for the test suite was 3.95 seconds after compilation and setup.</p></div>
-<table><thead><tr><th>Adversarial test</th><th>Result</th></tr></thead><tbody>
-<tr><td><code>test_adversarial_same_cursor_insertions_converge</code></td><td>PASS</td></tr>
-<tr><td><code>test_adversarial_concurrent_delete_preserves_unobserved_insert</code></td><td>PASS</td></tr>
-<tr><td><code>test_adversarial_overlapping_deletes_undo_independently</code></td><td>PASS</td></tr>
-<tr><td><code>test_adversarial_deferred_operation_applies_after_dependency</code></td><td>PASS</td></tr>
-<tr><td><code>test_adversarial_duplicate_delivery_is_idempotent</code></td><td>PASS</td></tr>
+<div class="callout verified"><p><strong>RUN 1: GREEN</strong> - the job log reports <code>running 43 tests</code> and <code>test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.95s</code>. All five adversarial tests appear individually as <code>ok</code>. Both figures are quoted from the log, not recomputed.</p></div>
+<div class="callout"><p><strong>WHY GREPPING THE LOG GIVES 35, NOT 43</strong> - this trips up anyone auditing the artefact, so it is documented rather than hidden. The log interleaves test output with <code>INFO</code> lines emitted <em>during</em> a test, and eight of them land between the test name and its verdict:</p>
+<pre>test tests::test_line_len ... 2026-11-25T04:16:14+00:00 INFO [text::patch::tests] editing 0..3: "MOE"</pre>
+<p>The trailing <code>ok</code> is pushed onto the next output line, so a grep for <code>^test .* \.\.\. ok$</code> finds 35 of 43. Counting the distinct <code>test NAME ...</code> prefixes finds all 43 - the eight missing ones are exactly the tests that log while running. The authoritative figure is the harness's own summary line (<code>43 passed; 0 failed</code>), and the 8 names are recoverable, which is how this was verified rather than assumed.</p></div>
+
+<h3>Run 2 - standalone harness, no patch, sixth case included</h3>
+<p>The repository also carries <code>harness/</code>, a small crate whose dependencies are <code>path</code> links into a pinned Zed checkout. It needs no patch and no upstream modification: it links the real <code>text</code>, <code>rope</code>, <code>clock</code>, and <code>sum_tree</code> crates and calls them directly. Building with the <code>test-support</code> feature exposes <code>Buffer::check_invariants()</code>, so each scenario asserts Zed's own structural consistency, not just string equality.</p>
+<pre>./tools/setup-zed.sh          # sparse, filtered checkout of the pin
+cd harness &amp;&amp; cargo test --release</pre>
+<div class="callout verified"><p><strong>RUN 2: 6 PASSED, 0 FAILED</strong> - measured locally on the pin <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code> with Rust 1.100.0, the toolchain that commit itself declares. Every case below executed and returned <code>ok</code>.</p></div>
+<table><thead><tr><th>Adversarial test</th><th>Run 1 (patch, CI)</th><th>Run 2 (harness, local)</th></tr></thead><tbody>
+<tr><td><code>test_adversarial_same_cursor_insertions_converge</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_concurrent_delete_preserves_unobserved_insert</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_overlapping_deletes_undo_independently</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_deferred_operation_applies_after_dependency</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_duplicate_delivery_is_idempotent</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_three_same_cursor_insertions_all_orders_converge</code></td><td>not in patch</td><td>PASS</td></tr>
 </tbody></table>
-<p><a href="https://github.com/bugnarokdev/inside-zed/actions/runs/45544928667" target="_blank" rel="noreferrer">Open successful CI run and raw test logs ↗</a></p>
-<div class="callout"><p><strong>SIXTH CASE: NOT RUN</strong> - Three concurrent insertions at the same cursor, delivered in all six orders, were drafted as a sixth test. That draft never compiled, so it was withdrawn from the patch and is not reported as a result. The five-test green run above is the only executed evidence. The permutation case stays in the adversarial matrix as an open hypothesis.</p></div>
+
+<h3>The sixth case, now executed</h3>
+<p>The permutation case was previously withdrawn: its first draft never compiled (<code>E0282</code>, type annotations needed), so it was never reported as a result. It is rewritten in <code>harness/tests/permutations.rs</code> and now runs.</p>
+<p>Three replicas each insert one character at the same offset of <code>"ab"</code>. All six delivery orders are tried on a fresh observer buffer. Every order must drain its deferred operations, satisfy <code>check_invariants()</code>, produce byte-identical text, and preserve each inserted character exactly once.</p>
+<div class="callout verified"><p><strong>RESULT: all six orders converge</strong> to the single string <code>"aCBAb"</code>. Convergence here is total, not statistical: the ordering is fixed by <code>Lamport::cmp</code>, which breaks ties on <code>replica_id</code> (<code>self.value.cmp(&amp;other.value).then_with(|| self.replica_id.cmp(&amp;other.replica_id))</code> in <code>crates/clock/src/clock.rs</code>). Concurrent inserts at one offset therefore sort by replica id, deterministically, on every peer.</p></div>
+<p>This is worth stating precisely, because it is easy to overclaim. The test proves convergence for this conflict shape under exhaustive delivery order. It does not prove convergence for arbitrary interleavings of deletes, undo, and redo at scale; that remains the schedule-fuzzer target below.</p>
 
 <h2 id="reproduce">10. Reproduction commands and source revision</h2>
-<p>All source links on this page are pinned to upstream commit <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code> (the revision inspected for this study). In a local checkout of that revision, the focused test commands are:</p>
+<p>All source links on this page are pinned to upstream commit <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code> (the revision inspected for this study). The focused test commands for the upstream suite, in a local checkout of that revision, are:</p>
 <pre>cargo test -p text test_random_edits
 cargo test -p text test_concurrent_edits
 cargo test -p text test_random_concurrent_edits
 cargo test -p text test_edit_partially_intersecting_a_deleted_fragment</pre>
-<p>These commands are recommendations for reproducing the existing tests. The upstream test suite was inspected statically for this page; it was not run as part of this investigation.</p>
-<div class="callout"><p><strong>NEXT RESEARCH TARGET</strong> - convert the first two high-priority rows in the adversarial matrix into a minimal Rust test patch, then run them against the pinned revision. Keep the results, not just the hypotheses, in this notebook.</p></div>
+<p>The upstream suite was run in full by Run 1 above (<code>cargo test -p text</code>, 43 passed). The individual commands here select a single test each and are listed for targeted re-runs.</p>
+<div class="callout"><p><strong>NEXT RESEARCH TARGET</strong> - promote the permutation test into a deterministic schedule fuzzer: enumerate orders that preserve each replica's causal sequence, inject duplicates, and compare final text plus semantic invariants across replicas. The current exhaustive six-order case covers one conflict shape only.</p></div>
 </article>
 <aside class="toc"><strong>ON THIS PAGE</strong><a href="#thesis">Engineering question</a><a href="#invariants">check_invariants</a><a href="#local-tests">Local tests</a><a href="#convergence">Convergence</a><a href="#semantic-core">Remote semantics</a><a href="#adversarial">Adversarial matrix</a><a href="#known-regression">Existing regression</a><a href="#recommended">Work sequence</a><a href="#verdict">Evidence boundary</a><a href="#harness">Test harness</a><a href="#reproduce">Reproduction</a></aside></main>
 <footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>

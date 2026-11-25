@@ -1,0 +1,22 @@
+[package]
+name = "inside-zed-harness"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Measurement harness and adversarial tests against the real Zed text engine"
+
+# Every dependency points at a checkout of zed-industries/zed pinned to
+# ZED_PIN below. tools/setup-zed.sh creates that checkout at ./vendor/zed.
+# Nothing here is a reimplementation: these are Zed's own crates.
+
+[dependencies]
+text = { path = "../vendor/zed/crates/text" }
+rope = { path = "../vendor/zed/crates/rope" }
+clock = { path = "../vendor/zed/crates/clock" }
+sum_tree = { path = "../vendor/zed/crates/sum_tree" }
+
+[dev-dependencies]
+# test-support exposes Buffer::check_invariants(), Zed's own internal
+# consistency checker. It pulls in util/path, which is why the pinned
+# checkout needs those crates present and why a nightly toolchain is required.
+text = { path = "../vendor/zed/crates/text", features = ["test-support"] }
