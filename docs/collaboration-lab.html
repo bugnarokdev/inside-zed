@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="A source-pinned collaboration lab: three Zed text replicas make concurrent edits, exchange operations in different orders, and converge.">
+<title>Collaboration lab · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./index.html">Overview</a><a href="./architecture.html">Architecture</a><a href="./text-engine.html">Text engine</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<div class="pagehead"><div class="wrap"><div class="crumb">ENGINE ROOM / 06 · COLLABORATION LAB</div><h1>Three replicas.<br>One converged buffer.</h1><p>A concrete walkthrough of concurrent edits in Zed's text engine: independent local changes, different operation arrival orders, causal readiness, and the test coverage that checks convergence.</p><div class="hero-meta"><span class="pill">UPSTREAM 2664a0aa1eae</span><span class="pill">TEXT CRATE / TEST TRACE</span><span class="pill">SOURCE-BASED · NOT EXECUTED HERE</span></div></div></div>
+<main class="wrap content"><article class="article">
+<h2 id="scenario">1. The situation: three people, one file</h2>
+<p>Imagine three developers editing the same shared file while temporarily disconnected from one another. They all start from the same document state. Each makes a local change before receiving the others' operations.</p>
+<p>The upstream test uses a deliberately tiny base string, <code>abcdef</code>, so the ranges and expected results are easy to inspect. It creates three text buffers with distinct replica IDs, all initialized from that same text and buffer ID.</p>
+<div class="panel">
+  <div class="kicker">SHARED STARTING STATE</div>
+  <pre>abcdef</pre>
+  <p>All three replicas begin with the same visible text and the same initial causal history.</p>
+</div>
+
+<h2 id="local">2. Each replica edits locally</h2>
+<p>Each developer replaces a different one-character range. The ranges below are byte offsets in this ASCII-only test fixture.</p>
+<div class="panel">
+<table style="width:100%;border-collapse:collapse;font-size:14px">
+<thead><tr style="text-align:left;color:var(--dim);font:11px ui-monospace,monospace"><th style="padding:9px;border-bottom:1px solid var(--line)">REPLICA</th><th style="padding:9px;border-bottom:1px solid var(--line)">EDIT</th><th style="padding:9px;border-bottom:1px solid var(--line)">LOCAL RESULT</th></tr></thead>
+<tbody>
+<tr><td style="padding:10px;border-bottom:1px solid var(--line)">A · ID 1</td><td style="padding:10px;border-bottom:1px solid var(--line)"><code>1..2</code> replaces <code>b</code> with <code>12</code></td><td style="padding:10px;border-bottom:1px solid var(--line)"><code>a12cdef</code></td></tr>
+<tr><td style="padding:10px;border-bottom:1px solid var(--line)">B · ID 2</td><td style="padding:10px;border-bottom:1px solid var(--line)"><code>3..4</code> replaces <code>d</code> with <code>34</code></td><td style="padding:10px;border-bottom:1px solid var(--line)"><code>abc34ef</code></td></tr>
+<tr><td style="padding:10px">C · ID 3</td><td style="padding:10px"><code>5..6</code> replaces <code>f</code> with <code>56</code></td><td style="padding:10px"><code>abcde56</code></td></tr>
+</tbody>
+</table>
+<p style="margin-top:12px">These are the exact operations and local results asserted by Zed's <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L845-L857" target="_blank" rel="noreferrer">test_concurrent_edits ↗</a>.</p>
+</div>
+
+<h2 id="delivery">3. The network delivers operations in different orders</h2>
+<p>After the local edits, each buffer applies the other two operations. The receiving sequences are intentionally not identical:</p>
+<div class="panel">
+<div class="kicker">OPERATION ARRIVAL ORDER</div>
+<pre>Replica A:  A (local) → B → C
+Replica B:  B (local) → A → C
+Replica C:  C (local) → A → B</pre>
+<p>The test does not merge complete document strings. It exchanges the edit operations returned by each local <code>Buffer::edit</code> call and feeds those operations to the other buffers with <code>apply_op</code>.</p>
+</div>
+
+<h2 id="result">4. The convergence check</h2>
+<p>All three buffers are expected to finish with the same visible text:</p>
+<div class="panel">
+<div class="kicker">ASSERTED FINAL STATE</div>
+<pre>Replica A  →  a12c34e56
+Replica B  →  a12c34e56
+Replica C  →  a12c34e56</pre>
+<p><span class="tag verified">VERIFIED IN SOURCE</span> These three equality assertions are present in the upstream test at <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L859-L868" target="_blank" rel="noreferrer">tests.rs ↗</a>.</p>
+</div>
+
+<h2 id="under-hood">5. What makes remote replay possible?</h2>
+<p>The local edit is represented as an operation, not just as a new document string. The <code>EditOperation</code> carries a Lamport timestamp, the version the edit was based on, ranges, and replacement text. That version is essential context for interpreting the edit against another replica's fragment history.</p>
+<p>When operations arrive, <code>Buffer::apply_ops</code> stores them in history and checks whether the receiver has observed the operation's causal base version. Ready operations are applied; operations whose prerequisites are missing are held in the deferred queue and reconsidered by <code>flush_deferred_ops</code>. See <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L909-L955" target="_blank" rel="noreferrer">apply_ops / apply_op ↗</a>, <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L1276-L1299" target="_blank" rel="noreferrer">deferred queue and causal readiness ↗</a>, and <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L957-L1146" target="_blank" rel="noreferrer">remote edit replay ↗</a>.</p>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - this is why a remote edit cannot be understood as “replace bytes at the same numeric offset in whatever text happens to be here now.” The receiver has to interpret the sender's ranges in the context of the sender's observed version and the receiver's fragment structure.</p></div>
+
+<h2 id="stress">6. The larger stress test</h2>
+<p>The same test file contains <code>test_random_concurrent_edits</code>, which is more demanding than the three-replica example:</p>
+<ul>
+<li>It creates five replicas by default (overridable with <code>PEERS</code>).</li>
+<li>It schedules ten mutations by default (overridable with <code>OPERATIONS</code>).</li>
+<li>It randomly chooses between local edits, undo/redo, and receiving pending network operations.</li>
+<li>It checks buffer invariants during the run and, once the simulated network is idle, asserts that every replica has the same final text.</li>
+</ul>
+<p>Source: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L913-L991" target="_blank" rel="noreferrer">test_random_concurrent_edits ↗</a>. This is randomized test coverage, not a proof over every possible operation schedule.</p>
+
+<h2 id="limits">7. What this test does not settle</h2>
+<div class="callout hypothesis"><p><strong>OPEN QUESTION</strong> - the deterministic example edits three disjoint ranges. It does not establish the expected result when two replicas concurrently insert at the exact same cursor, replace the exact same range, or delete overlapping text.</p></div>
+<p>Nor should one infer a formal CRDT guarantee from these tests alone. The implementation and tests provide evidence of convergence for the exercised schedules; a universal guarantee would require a broader specification and proof than this walkthrough supplies.</p>
+
+<h2 id="next">8. The next experiment</h2>
+<p>The highest-value follow-up is a conflict matrix with tiny reproducible cases:</p>
+<ol>
+<li><strong>Same-cursor insertion:</strong> A inserts <code>X</code> and B inserts <code>Y</code> at the same position before either receives the other's operation.</li>
+<li><strong>Same-range replacement:</strong> A and B replace the same original characters with different strings.</li>
+<li><strong>Delete versus insert:</strong> A deletes a range while B inserts inside that range from the same starting version.</li>
+<li><strong>Undo after remote change:</strong> A undoes its own edit after receiving B's concurrent operation.</li>
+<li><strong>Causal reordering:</strong> a later operation arrives before the earlier operation it depends on, exercising deferral and queue flushing.</li>
+</ol>
+<p>Each case should record the initial version, operation timestamps, delivery order, final visible text, and invariant checks. Only then can we describe the conflict policy accurately.</p>
+<div class="callout"><p><strong>REPRODUCING THE EXISTING TEST</strong> - from a local checkout of the inspected upstream revision, run <code>cargo test -p text test_concurrent_edits</code>. This repository documents the checked-in assertions; the command has not been executed as part of this static analysis.</p></div>
+</article>
+<aside class="toc"><strong>ON THIS PAGE</strong><a href="#scenario">The situation</a><a href="#local">Local edits</a><a href="#delivery">Delivery order</a><a href="#result">Convergence check</a><a href="#under-hood">Remote replay</a><a href="#stress">Stress test</a><a href="#limits">Limits</a><a href="#next">Next experiment</a></aside>
+</main>
+<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
+</body></html>
