@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="A first-pass guide to Zed's Rust workspace: major layers, text paths, and the boundaries that deserve deeper source tracing.">
+<title>Architecture map · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./index.html">Overview</a><a href="./architecture.html">Architecture</a><a href="./text-engine.html">Text engine</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<div class="pagehead"><div class="wrap"><div class="crumb">FIELD GUIDE / 01</div><h1>A map of the machine.</h1><p>A first-pass guide to Zed's Rust workspace: major layers, text paths, and the boundaries that deserve deeper source tracing.</p></div></div>
+<main class="wrap content"><article class="article">
+<h2 id="workspace">A workspace, not a monolith</h2>
+<p>Zed is a Rust workspace whose responsibilities are split across crates. The application crate is only one part of the system: UI infrastructure, editing, text representation, language support, project management, and collaboration are implemented in separate areas.</p>
+<div class="callout"><p><strong>Verified scope:</strong> the paths below are concrete entry points in the upstream repository. The diagram is a conceptual guide, not a complete dependency graph.</p></div>
+<pre>crates/
+├── zed/          application
+├── gpui/         UI framework
+├── editor/       editor behavior
+├── text/         buffer and text model
+├── rope/         chunked text representation
+├── sum_tree/     summary-indexed tree
+├── language/     language and syntax infrastructure
+├── lsp/          language-server protocol
+└── project/      project and workspace behavior</pre>
+<h2 id="text-path">The text path</h2>
+<p>The current investigation follows the route from editor-facing operations into the buffer model and then down through rope storage and the summary tree.</p>
+<pre>Editor
+  └─ Buffer / BufferSnapshot
+       ├─ fragment and insertion indexes
+       └─ Rope
+            └─ SumTree
+                 └─ Chunk + bitmap metadata</pre>
+<p>Relevant source entry points: <a href="https://github.com/zed-industries/zed/tree/main/crates/editor">crates/editor</a>, <a href="https://github.com/zed-industries/zed/tree/main/crates/text">crates/text</a>, <a href="https://github.com/zed-industries/zed/tree/main/crates/rope">crates/rope</a>, and <a href="https://github.com/zed-industries/zed/tree/main/crates/sum_tree">crates/sum_tree</a>.</p>
+<h2 id="ui">The UI runtime</h2>
+<p><code>crates/gpui</code> is a separate investigation track. It deserves its own pass over element composition, layout, event dispatch, rendering, platform boundaries, and scheduling. This first architecture page deliberately avoids claims about frame timing or rendering performance until those paths have been inspected.</p>
+<h2 id="language">Language and project services</h2>
+<p><code>language</code>, <code>lsp</code>, and <code>project</code> provide another major axis of the editor. The exact dependency direction and runtime call paths need to be traced from concrete features rather than inferred from crate names.</p>
+<h2 id="next">Next investigations</h2>
+<ul><li>Trace one local edit through buffer mutation and operation construction.</li><li>Trace one language-server request from editor action to transport and response handling.</li><li>Map GPUI layout and event lifecycles from public API to platform renderer.</li><li>Pin each finished investigation to a specific upstream commit.</li></ul></article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#workspace">Workspace</a><a href="#text-path">Text path</a><a href="#ui">UI runtime</a><a href="#language">Language services</a><a href="#next">Next investigations</a></aside></main>
+<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
+</body></html>
