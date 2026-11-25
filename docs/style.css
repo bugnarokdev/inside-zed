@@ -10,6 +10,11 @@
   --code-bg:#f7f7f8; --code-text:#0f5f45; --marker:#8a8a92;
   --logo:url(./assets/bugnarok-light.png);
   --sidebar:272px; --toc:200px; --content:740px; --edge:28px;
+  /* One container width for the whole page. The sidebar, the content column
+     and the footer all sit inside it, so they share the same left and right
+     edges instead of the content hugging the window while the footer is
+     centred on its own. */
+  --page:1320px;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
   --ease:cubic-bezier(.2,.8,.2,1);
@@ -41,7 +46,14 @@ html[data-theme="dark"]{
   }
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:76px;-webkit-text-size-adjust:100%}
+/* One anchor offset for the whole site: the sticky top bar is 56px tall, so
+   an anchored heading must stop 96px from the top to clear it with breathing
+   room. This value is mirrored by SPY_OFFSET in assets/site.js, which is what
+   keeps the highlighted TOC entry in sync with the section on screen; the two
+   used to disagree (76px padding plus another 76px margin meant a heading
+   landed at 152px while the spy tested 96px, so the previous section stayed
+   highlighted after a click). */
+html{scroll-behavior:smooth;scroll-padding-top:96px;-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.7 var(--sans);
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   display:flex;flex-direction:column;min-height:100vh}
@@ -50,10 +62,11 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 code,kbd,pre{font-family:var(--mono)}
 
 /* ---------- top bar ---------- */
-.topbar{position:sticky;top:0;z-index:40;height:56px;display:flex;align-items:center;
-  gap:14px;padding:0 var(--edge);
+.topbar{position:sticky;top:0;z-index:40;height:56px;
   background:color-mix(in srgb,var(--bg) 86%,transparent);
   backdrop-filter:blur(16px) saturate(160%);border-bottom:1px solid var(--border-muted)}
+.topbar-inner{max-width:var(--page);margin:0 auto;height:100%;display:flex;
+  align-items:center;gap:14px;padding:0 var(--edge)}
 .brand{display:flex;align-items:center;gap:9px;font:700 12.5px/1 var(--mono);
   letter-spacing:.14em;color:var(--text);white-space:nowrap}
 .brand:hover{text-decoration:none;color:var(--accent)}
@@ -75,11 +88,30 @@ code,kbd,pre{font-family:var(--mono)}
 .lang button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
 
 /* ---------- shell ---------- */
+/* The shell is the page container: it caps its width and centres itself, so
+   the sidebar's left edge and the content's right edge line up with the
+   footer instead of the whole block hanging off the left of the window. */
+/* The sidebar is a grid column of the shell again, so it is aligned with the
+   container by construction: a fixed rail had to re-centre itself against the
+   window, which counts the scrollbar gutter, while the shell centres itself
+   inside the body content box, which does not. That mismatch showed up as a
+   few pixels of drift between the menu and the article.
+   The menu stays visible to the last pixel because the footer now lives inside
+   the shell: sticky is clamped by the bottom of the grid area, so when the shell
+   ended before the footer the box was pushed up and its top slid under the top
+   bar. Its height is exactly the viewport minus the bar, which is what lets its
+   top rest at 56px when the page is scrolled all the way down. */
 .shell{display:grid;grid-template-columns:var(--sidebar) minmax(0,1fr);
-  min-height:calc(100vh - 56px);flex:1 0 auto}
-.sidebar{position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;
-  border-right:1px solid var(--border-muted);padding:24px 12px 40px;
+  align-items:start;
+  min-height:calc(100vh - 56px);flex:1 0 auto;
+  width:100%;max-width:var(--page);margin:0 auto;
+  border-left:1px solid var(--border-muted);border-right:1px solid var(--border-muted)}
+.sidebar{position:sticky;top:56px;align-self:start;
+  height:calc(100vh - 56px);overflow-y:auto;
+  border-right:1px solid var(--border-muted);padding:24px 12px 24px;
   scrollbar-width:thin}
+.content{min-width:0;display:flex;flex-direction:column;
+  min-height:calc(100vh - 56px)}
 .side-group{margin-bottom:20px}
 .side-group>h4{margin:0 0 6px;padding:0 10px;font:600 10.5px/1.5 var(--mono);
   letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
@@ -112,7 +144,8 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
 /* ---------- layout ---------- */
 .layout{display:grid;grid-template-columns:minmax(0,var(--content)) var(--toc);
   gap:52px;padding:40px var(--edge) 88px;
-  max-width:calc(var(--content) + var(--toc) + 52px + var(--edge) * 2)}
+  max-width:calc(var(--content) + var(--toc) + 52px + var(--edge) * 2);
+  margin:0 auto}
 .toc{position:sticky;top:80px;align-self:start;font-size:13px}
 .toc>h4{margin:0 0 10px;font:600 10.5px/1.5 var(--mono);letter-spacing:.13em;
   text-transform:uppercase;color:var(--dim)}
@@ -129,8 +162,12 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
   margin:0 0 14px;font-weight:700}
 .doc-head .lede{font-size:17.5px;line-height:1.62;color:var(--muted);margin:0;max-width:68ch}
 .article{margin-top:32px;font-size:16px}
+/* No scroll-margin-top here: html{scroll-padding-top} already reserves room
+   under the sticky top bar for every anchor on the page. Setting both stacked
+   the two offsets, so a clicked heading stopped 152px down and the TOC spy,
+   which tests at its own threshold, kept the previous entry highlighted. */
 .article h2{font-size:23px;line-height:1.28;letter-spacing:-.02em;margin:44px 0 12px;
-  font-weight:650;scroll-margin-top:76px}
+  font-weight:650}
 .article h2:first-child{margin-top:0}
 .article h3{font-size:17px;margin:28px 0 8px;font-weight:650}
 .article h4{font-size:15px;margin:22px 0 6px;font-weight:650}
@@ -182,7 +219,7 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
 .pager a.next .title{display:block}
 
 /* ---------- landing ---------- */
-.landing{max-width:900px;padding:56px var(--edge) 80px}
+.landing{max-width:900px;margin:0 auto;padding:56px var(--edge) 80px}
 .landing .eyebrow{font:600 10.5px/1.5 var(--mono);letter-spacing:.15em;
   text-transform:uppercase;color:var(--accent);margin-bottom:16px;display:flex;
   align-items:center;gap:8px}
@@ -231,10 +268,15 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
   letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
 
 /* ---------- footer ---------- */
+/* The footer lives inside the page container, in the content column, so it is
+   never a full-width band: on a wide screen it stays centred with the article
+   instead of stretching from edge to edge. The shell already reserves the menu
+   column and applies the container width, so the footer only needs the same
+   horizontal padding as the article. */
 .site-footer{border-top:1px solid var(--border-muted);background:var(--surface);
-  padding:40px var(--edge) 34px;margin-top:0}
-.foot-inner{max-width:1080px;margin:0 auto;display:flex;flex-wrap:wrap;
-  align-items:flex-start;gap:32px}
+  padding:40px 0 34px;margin-top:56px}
+.foot-inner{display:flex;flex-wrap:wrap;
+  align-items:flex-start;gap:32px;padding:0 var(--edge)}
 .foot-brand{flex:0 0 auto;min-width:240px}
 .foot-logo{display:block;width:clamp(180px,24vw,260px);height:auto;
   background-image:var(--logo);background-size:contain;background-repeat:no-repeat;
@@ -250,7 +292,8 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
 .foot-nav a:hover{color:var(--text);text-decoration:none}
 .foot-nav a:hover .brk{color:var(--accent)}
 .foot-nav svg{width:6px;height:6px;margin-left:5px;color:var(--dim);flex:none}
-.foot-bottom{max-width:1080px;margin:28px auto 0;padding-top:18px;
+.foot-bottom{margin:28px 0 0;
+  padding:18px var(--edge) 0;
   border-top:1px solid var(--border-muted);display:flex;flex-wrap:wrap;
   gap:10px 18px;align-items:center;justify-content:space-between;
   font:11px/1.7 var(--mono);color:var(--dim)}
@@ -266,8 +309,12 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
   .toc{display:none}
 }
 @media (max-width:900px){
-  .shell{grid-template-columns:1fr}
-  .sidebar{position:fixed;inset:56px 0 0 0;height:auto;background:var(--bg);z-index:35;
+  /* display:contents removes the rail box so the menu falls back to its own
+     fixed drawer; hiding the rail outright would hide the menu with it. */
+  .rail{display:contents}
+  .shell{padding-left:0;grid-template-columns:1fr}
+  .sidebar{position:fixed;inset:56px 0 0 0;height:auto;max-height:none;width:auto;
+    background:var(--bg);z-index:35;
     display:none;border-right:0;padding-bottom:80px}
   body.nav-open .sidebar{display:block}
   body.nav-open{overflow:hidden}

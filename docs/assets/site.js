@@ -199,18 +199,43 @@
     }
     if (!targets.length) return;
 
+    // Read the offset the browser actually applies to anchored headings
+    // (html{scroll-padding-top}) instead of hard-coding it. A second hard-coded
+    // number here is what let the spy and the CSS drift apart: a heading could
+    // sit below the threshold while the spy still pointed at the section above,
+    // so clicking entry 10 highlighted entry 9.
+    var pad = parseInt(getComputedStyle(document.documentElement).scrollPaddingTop, 10);
+    var offset = (isNaN(pad) ? 96 : pad) + 4; // small margin so a heading on the line still wins
+
     var active = null;
-    function onScroll() {
-      var best = null;
-      for (var i = 0; i < targets.length; i++) {
-        var top = targets[i][0].getBoundingClientRect().top;
-        if (top - 96 <= 0) best = targets[i];
-      }
-      if (!best) best = targets[0];
-      if (best[1] === active) return;
+    var lockUntil = 0;
+    function setActive(link) {
+      if (link === active) return;
       if (active) active.classList.remove("active");
-      best[1].classList.add("active");
-      active = best[1];
+      link.classList.add("active");
+      active = link;
+    }
+    function onScroll() {
+      // Smooth scrolling replays scroll events all the way to the target, and
+      // each one would recompute a section that is still above the clicked one.
+      // Ignore the spy just long enough for the animation to land, otherwise the
+      // highlight flashes through the entries in between.
+      if (Date.now() < lockUntil) return;
+      var best = targets[0];
+      for (var i = 0; i < targets.length; i++) {
+        if (targets[i][0].getBoundingClientRect().top - offset <= 0) best = targets[i];
+      }
+      setActive(best[1]);
+    }
+    // A click scrolls to the section; highlight it at once so the entry the
+    // user picked is the one lit, not the one that happened to be above it.
+    for (var j = 0; j < targets.length; j++) {
+      (function(link) {
+        link.addEventListener("click", function() {
+          lockUntil = Date.now() + 900;
+          setActive(link);
+        });
+      })(targets[j][1]);
     }
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
