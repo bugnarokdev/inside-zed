@@ -1,0 +1,66 @@
+name: docs
+
+# Guarantees that the published site matches its sources. docs/ is build
+# output, so a hand edit there would silently diverge from site/ and be
+# overwritten by the next build. This job rebuilds and fails if the committed
+# output differs, which keeps the published pages attributable to the sources
+# that produced them.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "site/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "site/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: docs match site sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show python
+        run: python3 --version
+
+      - name: Rebuild and compare
+        run: python3 site/build.py --check
+
+      - name: Fail if the rebuild changed anything
+        # --check exits non-zero when docs/ is stale, but a builder that
+        # stops writing altogether would also pass. Comparing the tree makes
+        # the guarantee explicit.
+        run: |
+          if ! git diff --quiet -- docs/; then
+            echo "docs/ is out of date: run python3 site/build.py and commit the result."
+            git diff --stat -- docs/
+            exit 1
+          fi
+          echo "docs/ is in sync with site/"
+
+      - name: Fail on em dash
+        # House style for this repository. Kept here so a regenerated page
+        # cannot reintroduce one unnoticed.
+        run: |
+          if grep -rn "—" docs/ site/ --include="*.html" --include="*.css" --include="*.js" --include="*.json"; then
+            echo "em dash found: an en dash is used for numeric ranges instead."
+            exit 1
+          fi
+          echo "no em dash"
