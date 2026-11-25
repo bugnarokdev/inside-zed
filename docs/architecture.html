@@ -1,16 +1,72 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#090d12">
-<meta name="description" content="A first-pass guide to Zed's Rust workspace: major layers, text paths, and the boundaries that deserve deeper source tracing.">
-<title>Architecture map · Inside Zed</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="A first-pass guide to Zed&#x27;s Rust workspace: major layers, text paths, and the boundaries that deserve deeper source tracing.">
+<title>A map of the machine. · Inside Zed</title>
 <link rel="stylesheet" href="./style.css">
+<link rel="preload" href="./assets/bugnarok-light.png" as="image">
+<script>
+(function () {
+  try {
+    var l = localStorage.getItem("ized-lang");
+    if (l === "fr") document.documentElement.setAttribute("lang", "fr");
+    var t = localStorage.getItem("ized-theme");
+    if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
-<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
-<div class="pagehead"><div class="wrap"><div class="crumb">FIELD GUIDE / 01</div><h1>A map of the machine.</h1><p>A first-pass guide to Zed's Rust workspace: major layers, text paths, and the boundaries that deserve deeper source tracing.</p></div></div>
-<main class="wrap content"><article class="article">
+<header class="topbar">
+<button class="tb-btn menu-btn" type="button" data-menu aria-label="Menu">☰</button>
+<a class="brand" href="./index.html"><span class="dot"></span>INSIDE ZED</a>
+<span class="spacer"></span>
+<a class="tb-link" href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a>
+<a class="tb-link" href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Repository ↗</a>
+<div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="fr" aria-pressed="false">FR</button></div>
+<button class="tb-btn" type="button" data-theme aria-label="Toggle theme">◐</button>
+</header>
+<div class="shell">
+<nav class="sidebar" aria-label="Docs">
+<div class="side-group">
+<h4>Get started</h4>
+<a href="./index.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Overview</a>
+</div>
+<div class="side-group">
+<h4>The engine</h4>
+<a href="./architecture.html" aria-current="page"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Architecture</a>
+<a href="./text-engine.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Text engine</a>
+<a href="./text-engine.html#rope" class="sub"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>SumTree</a>
+<a href="./edit-lifecycle.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Edit lifecycle</a>
+<a href="./locator.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Locator</a>
+</div>
+<div class="side-group">
+<h4>Collaboration</h4>
+<a href="./collaboration-lab.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Collaboration lab</a>
+</div>
+<div class="side-group">
+<h4>Evidence</h4>
+<a href="./invariants-and-adversarial-testing.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Engineering audit</a>
+<a href="./measurements.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Measurements</a>
+<a href="./runtime.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Runtime</a>
+</div>
+<div class="side-meta">
+Zed @ <code>2664a0aa</code><br>
+33 tests · 0 failures<br>
+<a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Repository ↗</a>
+</div>
+</nav>
+<main>
+<div class="layout">
+<article>
+<div class="doc-head">
+<div class="crumb">FIELD GUIDE / 01</div>
+<h1>A map of the machine.</h1>
+<p class="lede">A first-pass guide to Zed's Rust workspace: major layers, text paths, and the boundaries that deserve deeper source tracing.</p>
+</div>
+<div class="article">
 <h2 id="workspace">A workspace, not a monolith</h2>
 <p>Zed is a Rust workspace whose responsibilities are split across crates. The application crate is only one part of the system: UI infrastructure, editing, text representation, language support, project management, and collaboration are implemented in separate areas.</p>
 <div class="callout"><p><strong>Verified scope:</strong> the paths below are concrete entry points in the upstream repository. The diagram is a conceptual guide, not a complete dependency graph.</p></div>
@@ -38,6 +94,37 @@
 <h2 id="language">Language and project services</h2>
 <p><code>language</code>, <code>lsp</code>, and <code>project</code> provide another major axis of the editor. The exact dependency direction and runtime call paths need to be traced from concrete features rather than inferred from crate names.</p>
 <h2 id="next">Next investigations</h2>
-<ul><li>Trace one local edit through buffer mutation and operation construction.</li><li>Trace one language-server request from editor action to transport and response handling.</li><li>Map GPUI layout and event lifecycles from public API to platform renderer.</li><li>Pin each finished investigation to a specific upstream commit.</li></ul></article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#workspace">Workspace</a><a href="#text-path">Text path</a><a href="#ui">UI runtime</a><a href="#language">Language services</a><a href="#next">Next investigations</a></aside></main>
-<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
-</body></html>
+<ul><li>Trace one local edit through buffer mutation and operation construction.</li><li>Trace one language-server request from editor action to transport and response handling.</li><li>Map GPUI layout and event lifecycles from public API to platform renderer.</li><li>Pin each finished investigation to a specific upstream commit.</li></ul>
+</div>
+<div class="pager"><a href="./runtime.html"><span class="dir">Previous</span><span class="title">Runtime</span></a><a class="next" href="./text-engine.html"><span class="dir">Next</span><span class="title">Text engine</span></a></div>
+</article>
+<aside class="toc"><h4>On this page</h4>
+<a href="#workspace">A workspace, not a monolith</a>
+<a href="#text-path">The text path</a>
+<a href="#ui">The UI runtime</a>
+<a href="#language">Language and project services</a>
+<a href="#next">Next investigations</a>
+</aside>
+</div>
+</main>
+</div>
+<footer class="site-footer">
+<div class="foot-inner">
+<div class="foot-brand">
+<a href="./index.html" class="foot-logo" aria-label="BUGNARÖK" style="height:52px"></a>
+<p class="foot-tag">Independent engineering study of Zed's Rust engine. Not affiliated with Zed Industries.</p>
+</div>
+<nav class="foot-nav" aria-label="Secondary">
+<ul>
+<li><a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Repository<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Upstream<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/harness/tests" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Code<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/harness/results/suite-run.txt" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Sources<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/README.md" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>README<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li>
+</ul>
+</nav>
+</div>
+<div class="foot-bottom">
+<span><span class="foot-dot"></span>33 tests · 0 failures · Zed @ <code>2664a0aa</code></span>
+<span>Every claim is labelled VERIFIED, ANALYSIS or HYPOTHESIS.</span>
+</div>
+</footer>
+<script src="./assets/site.js" defer></script>
+</body>
+</html>

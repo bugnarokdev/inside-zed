@@ -1,0 +1,77 @@
+<div class="eyebrow"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>INDEPENDENT RUST ENGINEERING STUDY / 001</div>
+<h1>Under the hood of <span class="accent">Zed.</span></h1>
+<p class="lede">An independent, source-based exploration of Zed: its data structures, text engine, UI runtime, concurrency model, and performance trade-offs.</p>
+<div class="pills">
+<span class="pill">RUST ENGINEERING</span>
+<span class="pill">DATA STRUCTURES</span>
+<span class="pill">TEXT SYSTEMS</span>
+<span class="pill">PERFORMANCE</span>
+</div>
+
+<div class="note">
+<p><strong>THE APPROACH</strong></p>
+<p>Read the code. Trace the behavior. Identify the trade-offs. Measure before making performance claims. Every claim on this site is labelled as verified, analysis, or open hypothesis.</p>
+</div>
+
+<h2>00 / EVIDENCE STATUS</h2>
+<div class="panels">
+<div class="panel">
+<h3>33 tests, executed.</h3>
+<p>Thirty-three scenarios run against Zed's own crates at a pinned revision: five adversarial insert/delete cases and a six-order permutation case against <code>text</code>, each asserting Zed's own <code>check_invariants()</code>; eight against <code>clock</code>, which ships with no tests of its own; five against <code>scheduler</code>, pinning the priority weights and the <code>!Send</code> executor boundary; and fourteen against <code>sum_tree</code> and <code>rope</code>, covering copy-on-write independence, summary aggregation, seek bias, and byte-versus-character columns.</p>
+<p class="acts"><a href="./invariants-and-adversarial-testing.html">Read the audit</a><a href="./runtime.html">Read the runtime page</a><a href="./text-engine.html">Read the data structures</a></p>
+</div>
+<div class="panel">
+<h3>Latency, measured on real code.</h3>
+<p>A harness linked against the pinned source shows edit cost staying near-constant as documents grow 200x, and a rope chunk size of exactly 128 bytes explaining why.</p>
+<p class="acts"><a href="./measurements.html">See the measurements</a></p>
+</div>
+</div>
+
+<h2>01 / SYSTEM MAP</h2>
+<div class="grid">
+<a class="item" href="./architecture.html"><span class="n">01 - SYSTEM</span><span class="t">Architecture map</span><span class="d">A first-pass map of the workspace layers and the main paths connecting them.</span><span class="s">FIRST PASS</span></a>
+<a class="item" href="./text-engine.html"><span class="n">02 - TEXT SYSTEM</span><span class="t">Text engine</span><span class="d">Buffers, snapshots, fragments, ropes, tree indexes, and the edit lifecycle.</span><span class="s">IN PROGRESS</span></a>
+<a class="item" href="./edit-lifecycle.html"><span class="n">03 - EDIT TRACE</span><span class="t">One edit. Many layers.</span><span class="d">Trace a text change through operations, fragments, anchors, undo, and remote replay.</span><span class="s">SOURCE-PINNED DEEP DIVE</span></a>
+<a class="item" href="./collaboration-lab.html"><span class="n">04 - COLLABORATION LAB</span><span class="t">Three replicas. One result.</span><span class="d">Walk through concurrent edits, different delivery orders, causal replay, and convergence tests.</span><span class="s">SOURCE-TEST TRACE</span></a>
+<a class="item" href="./invariants-and-adversarial-testing.html"><span class="n">05 - ENGINEERING AUDIT</span><span class="t">Invariants under pressure.</span><span class="d">Audit the checks, convergence simulator, known regressions, and adversarial test gaps.</span><span class="s">6 TESTS EXECUTED</span></a>
+<a class="item" href="./measurements.html"><span class="n">06 - MEASUREMENT</span><span class="t">Measured, not guessed.</span><span class="d">Insert latency versus document size, offset lookup cost, undo grouping, and rope chunk geometry.</span><span class="s">REAL RUN, RAW OUTPUT COMMITTED</span></a>
+<a class="item" href="./runtime.html"><span class="n">07 - RUNTIME</span><span class="t">One thread owns the state.</span><span class="d">The <code>!Send</code> executor, the 6:3:1 weighted priority draw, and Lamport ordering across replicas.</span><span class="s">13 TESTS EXECUTED</span></a>
+<a class="item" href="./locator.html"><span class="n">08 - POSITIONING</span><span class="t">Locator deep dive</span><span class="d">Ordered identifiers, insertion between positions, depth, and adversarial patterns.</span><span class="s">INITIAL NOTES</span></a>
+<a class="item" href="./text-engine.html#rope"><span class="n">09 - DATA STRUCTURE</span><span class="t">SumTree</span><span class="d">Aggregated summaries, multidimensional traversal, cursors, and copy-on-write behavior.</span><span class="s">14 TESTS EXECUTED</span></a>
+</div>
+
+<h2>02 / EVIDENCE MODEL</h2>
+<div class="panels">
+<div class="panel">
+<h3>Engineering, not guesswork.</h3>
+<p>This project distinguishes what the source code proves from what an engineer can reasonably infer, and from questions that still need experiments. Benchmarks are workload-specific; implementation details are tied to upstream source.</p>
+</div>
+<div class="panel">
+<h3>Three levels of confidence.</h3>
+<p class="ev"><span class="tag verified">VERIFIED</span> Directly supported by inspected source code or tests.</p>
+<p class="ev"><span class="tag analysis">ANALYSIS</span> An interpretation of observed implementation and likely consequences.</p>
+<p class="ev"><span class="tag hypothesis">HYPOTHESIS</span> An open claim requiring more tracing, tests, or measurement.</p>
+</div>
+</div>
+
+<h2>03 / RESEARCH PRINCIPLES</h2>
+<div class="grid">
+<div class="item"><span class="n">A / SOURCE FIRST</span><span class="t">Implementation before interpretation.</span><span class="d">Use exact paths, symbols, tests, and revision context.</span></div>
+<div class="item"><span class="n">B / TRACE END TO END</span><span class="t">Connect the layers.</span><span class="d">Follow an operation from public API to mutation, storage, history, and synchronization.</span></div>
+<div class="item"><span class="n">C / MEASURE</span><span class="t">No performance theatre.</span><span class="d">Separate asymptotic reasoning from observed benchmark results.</span></div>
+<div class="item"><span class="n">D / STAY HONEST</span><span class="t">Expose what's unknown.</span><span class="d">Keep open questions visible and update conclusions when the code changes.</span></div>
+</div>
+
+<h2>04 / UPSTREAM</h2>
+<div class="panels">
+<div class="panel">
+<h3>Zed Industries / Zed</h3>
+<p>This is an independent engineering study. It is not affiliated with, endorsed by, or sponsored by Zed Industries.</p>
+<p class="acts"><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Explore the upstream source</a></p>
+</div>
+<div class="panel">
+<h3>Open notebook. Living investigation.</h3>
+<p>Documentation, source links, diagrams, questions, and future benchmark plans live in the GitHub repository.</p>
+<p class="acts"><a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Browse repository</a></p>
+</div>
+</div>

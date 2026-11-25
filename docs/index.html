@@ -1,44 +1,160 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#090d12">
-<meta name="description" content="An independent, source-based technical exploration of Zed's Rust engine.">
-<title>Inside Zed - Under the hood</title><link rel="stylesheet" href="./style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="An independent, source-based technical exploration of Zed&#x27;s Rust engine.">
+<title>Under the hood · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+<link rel="preload" href="./assets/bugnarok-light.png" as="image">
+<script>
+(function () {
+  try {
+    var l = localStorage.getItem("ized-lang");
+    if (l === "fr") document.documentElement.setAttribute("lang", "fr");
+    var t = localStorage.getItem("ized-theme");
+    if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
-<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<header class="topbar">
+<button class="tb-btn menu-btn" type="button" data-menu aria-label="Menu">☰</button>
+<a class="brand" href="./index.html"><span class="dot"></span>INSIDE ZED</a>
+<span class="spacer"></span>
+<a class="tb-link" href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a>
+<a class="tb-link" href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Repository ↗</a>
+<div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="fr" aria-pressed="false">FR</button></div>
+<button class="tb-btn" type="button" data-theme aria-label="Toggle theme">◐</button>
+</header>
+<div class="shell">
+<nav class="sidebar" aria-label="Docs">
+<div class="side-group">
+<h4>Get started</h4>
+<a href="./index.html" aria-current="page"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Overview</a>
+</div>
+<div class="side-group">
+<h4>The engine</h4>
+<a href="./architecture.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Architecture</a>
+<a href="./text-engine.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Text engine</a>
+<a href="./text-engine.html#rope" class="sub"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>SumTree</a>
+<a href="./edit-lifecycle.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Edit lifecycle</a>
+<a href="./locator.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Locator</a>
+</div>
+<div class="side-group">
+<h4>Collaboration</h4>
+<a href="./collaboration-lab.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Collaboration lab</a>
+</div>
+<div class="side-group">
+<h4>Evidence</h4>
+<a href="./invariants-and-adversarial-testing.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Engineering audit</a>
+<a href="./measurements.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Measurements</a>
+<a href="./runtime.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Runtime</a>
+</div>
+<div class="side-meta">
+Zed @ <code>2664a0aa</code><br>
+33 tests · 0 failures<br>
+<a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Repository ↗</a>
+</div>
+</nav>
 <main>
-<section class="hero"><div class="wrap hero-grid"><div><div class="eyebrow">INDEPENDENT RUST ENGINEERING STUDY / 001</div><h1>UNDER THE<br>HOOD OF <span>ZED.</span></h1><p class="lede">An independent, source-based exploration of Zed: its data structures, text engine, UI runtime, concurrency model, and performance trade-offs.</p><div class="hero-meta"><span class="pill">RUST ENGINEERING</span><span class="pill">DATA STRUCTURES</span><span class="pill">TEXT SYSTEMS</span><span class="pill">PERFORMANCE</span></div></div><aside class="hero-note"><strong>THE APPROACH</strong>Read the code. Trace the behavior. Identify the trade-offs. Measure before making performance claims. Every claim on this site is labelled as verified, analysis, or open hypothesis.</aside></div></section>
-<section class="section"><div class="wrap"><div class="section-head"><div><div class="kicker">00 / EVIDENCE STATUS</div><h2>What is actually proven here.</h2></div><p>Two executed artefacts, not a reading list.</p></div>
-<div class="split"><div class="panel"><h3>33 tests, executed.</h3><p>Thirty-three scenarios run against Zed's own crates at a pinned revision: five adversarial insert/delete cases and a six-order permutation case against <code>text</code>, each asserting Zed's own <code>check_invariants()</code>; eight against <code>clock</code>, which ships with no tests of its own; five against <code>scheduler</code>, pinning the priority weights and the <code>!Send</code> executor boundary; and fourteen against <code>sum_tree</code> and <code>rope</code>, covering copy-on-write independence, summary aggregation, seek bias, and byte-versus-character columns.</p><p style="margin-top:17px"><a class="inline-link" href="./invariants-and-adversarial-testing.html">Read the audit ↗</a> <a class="inline-link" href="./runtime.html" style="margin-left:14px">Read the runtime page ↗</a> <a class="inline-link" href="./text-engine.html" style="margin-left:14px">Read the data structures ↗</a></p></div>
-<div class="panel"><h3>Latency, measured on real code.</h3><p>A harness linked against the pinned source shows edit cost staying near-constant as documents grow 200×, and a rope chunk size of exactly 128 bytes explaining why.</p><p style="margin-top:17px"><a class="inline-link" href="./measurements.html">See the measurements ↗</a></p></div></div></div></section>
-<section class="section"><div class="wrap"><div class="section-head"><div><div class="kicker">01 / SYSTEM MAP</div><h2>Inside the engine.</h2></div><p>Follow the implementation across subsystems, not just the surface API.</p></div>
-<div class="cards">
-<a class="card" href="./architecture.html"><span class="num">01 - SYSTEM</span><span class="arrow">↗</span><h3>Architecture map</h3><p>A first-pass map of the workspace layers and the main paths connecting them.</p><span class="status">FIRST PASS</span></a>
-<a class="card" href="./text-engine.html"><span class="num">02 - TEXT SYSTEM</span><span class="arrow">↗</span><h3>Text engine</h3><p>Buffers, snapshots, fragments, ropes, tree indexes, and the edit lifecycle.</p><span class="status">IN PROGRESS</span></a>
-<a class="card" href="./edit-lifecycle.html"><span class="num">03 - EDIT TRACE</span><span class="arrow">↗</span><h3>One edit. Many layers.</h3><p>Trace a text change through operations, fragments, anchors, undo, and remote replay.</p><span class="status">SOURCE-PINNED DEEP DIVE</span></a>
-<a class="card" href="./collaboration-lab.html"><span class="num">04 - COLLABORATION LAB</span><span class="arrow">↗</span><h3>Three replicas. One result.</h3><p>Walk through concurrent edits, different delivery orders, causal replay, and convergence tests.</p><span class="status">SOURCE-TEST TRACE</span></a>
-<a class="card" href="./invariants-and-adversarial-testing.html"><span class="num">05 - ENGINEERING AUDIT</span><span class="arrow">↗</span><h3>Invariants under pressure.</h3><p>Audit the checks, convergence simulator, known regressions, and adversarial test gaps.</p><span class="status">6 TESTS EXECUTED</span></a>
-<a class="card" href="./measurements.html"><span class="num">06 - MEASUREMENT</span><span class="arrow">↗</span><h3>Measured, not guessed.</h3><p>Insert latency versus document size, offset lookup cost, undo grouping, and rope chunk geometry.</p><span class="status">REAL RUN, RAW OUTPUT COMMITTED</span></a>
-<a class="card" href="./runtime.html"><span class="num">07 - RUNTIME</span><span class="arrow">↗</span><h3>One thread owns the state.</h3><p>The <code>!Send</code> executor, the 6:3:1 weighted priority draw, and Lamport ordering across replicas.</p><span class="status">13 TESTS EXECUTED</span></a>
-<a class="card" href="./locator.html"><span class="num">08 - POSITIONING</span><span class="arrow">↗</span><h3>Locator deep dive</h3><p>Ordered identifiers, insertion between positions, depth, and adversarial patterns.</p><span class="status">INITIAL NOTES</span></a>
-<a class="card" href="./text-engine.html#rope"><span class="num">09 - DATA STRUCTURE</span><span class="arrow">↗</span><h3>SumTree</h3><p>Aggregated summaries, multidimensional traversal, cursors, and copy-on-write behavior.</p><span class="status">14 TESTS EXECUTED</span></a>
-</div></div></section>
-<section class="section"><div class="wrap"><div class="section-head"><div><div class="kicker">02 / EVIDENCE MODEL</div><h2>Facts over folklore.</h2></div><p>Every statement carries a clear level of confidence.</p></div>
-<div class="split"><div class="panel"><h3>Engineering, not guesswork.</h3><p>This project distinguishes what the source code proves from what an engineer can reasonably infer - and from questions that still need experiments. Benchmarks are workload-specific; implementation details are tied to upstream source.</p></div>
-<div class="panel evidence">
-<div class="evidence-row"><span class="tag verified">VERIFIED</span><p>Directly supported by inspected source code or tests.</p></div>
-<div class="evidence-row"><span class="tag analysis">ANALYSIS</span><p>An interpretation of observed implementation and likely consequences.</p></div>
-<div class="evidence-row"><span class="tag hypothesis">HYPOTHESIS</span><p>An open claim requiring more tracing, tests, or measurement.</p></div>
-</div></div></div></section>
-<section class="section"><div class="wrap"><div class="section-head"><div><div class="kicker">03 / RESEARCH PRINCIPLES</div><h2>Follow the real call path.</h2></div></div><div class="cards">
-<div class="card"><span class="num">A / SOURCE FIRST</span><h3>Implementation before interpretation.</h3><p>Use exact paths, symbols, tests, and revision context.</p></div>
-<div class="card"><span class="num">B / TRACE END TO END</span><h3>Connect the layers.</h3><p>Follow an operation from public API to mutation, storage, history, and synchronization.</p></div>
-<div class="card"><span class="num">C / MEASURE</span><h3>No performance theatre.</h3><p>Separate asymptotic reasoning from observed benchmark results.</p></div>
-<div class="card"><span class="num">D / STAY HONEST</span><h3>Expose what's unknown.</h3><p>Keep open questions visible and update conclusions when the code changes.</p></div>
-</div></div></section>
-<section class="section"><div class="wrap"><div class="split"><div><div class="kicker">UPSTREAM PROJECT</div><h2 style="font-size:28px;letter-spacing:-.04em">Zed Industries / Zed</h2><p style="color:var(--muted)">This is an independent engineering study. It is not affiliated with, endorsed by, or sponsored by Zed Industries.</p><p><a class="inline-link" href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Explore the upstream source ↗</a></p></div><div class="panel"><div class="kicker">RESEARCH REPOSITORY</div><h3>Open notebook. Living investigation.</h3><p>Documentation, source links, diagrams, questions, and future benchmark plans live in the GitHub repository.</p><p style="margin-top:17px"><a class="inline-link" href="https://github.com/bugnarokdev/inside-zed">Browse repository ↗</a></p></div></div></div></section>
+<div class="landing"><div class="eyebrow"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>INDEPENDENT RUST ENGINEERING STUDY / 001</div>
+<h1>Under the hood of <span class="accent">Zed.</span></h1>
+<p class="lede">An independent, source-based exploration of Zed: its data structures, text engine, UI runtime, concurrency model, and performance trade-offs.</p>
+<div class="pills">
+<span class="pill">RUST ENGINEERING</span>
+<span class="pill">DATA STRUCTURES</span>
+<span class="pill">TEXT SYSTEMS</span>
+<span class="pill">PERFORMANCE</span>
+</div>
+
+<div class="note">
+<p><strong>THE APPROACH</strong></p>
+<p>Read the code. Trace the behavior. Identify the trade-offs. Measure before making performance claims. Every claim on this site is labelled as verified, analysis, or open hypothesis.</p>
+</div>
+
+<h2>00 / EVIDENCE STATUS</h2>
+<div class="panels">
+<div class="panel">
+<h3>33 tests, executed.</h3>
+<p>Thirty-three scenarios run against Zed's own crates at a pinned revision: five adversarial insert/delete cases and a six-order permutation case against <code>text</code>, each asserting Zed's own <code>check_invariants()</code>; eight against <code>clock</code>, which ships with no tests of its own; five against <code>scheduler</code>, pinning the priority weights and the <code>!Send</code> executor boundary; and fourteen against <code>sum_tree</code> and <code>rope</code>, covering copy-on-write independence, summary aggregation, seek bias, and byte-versus-character columns.</p>
+<p class="acts"><a href="./invariants-and-adversarial-testing.html">Read the audit</a><a href="./runtime.html">Read the runtime page</a><a href="./text-engine.html">Read the data structures</a></p>
+</div>
+<div class="panel">
+<h3>Latency, measured on real code.</h3>
+<p>A harness linked against the pinned source shows edit cost staying near-constant as documents grow 200x, and a rope chunk size of exactly 128 bytes explaining why.</p>
+<p class="acts"><a href="./measurements.html">See the measurements</a></p>
+</div>
+</div>
+
+<h2>01 / SYSTEM MAP</h2>
+<div class="grid">
+<a class="item" href="./architecture.html"><span class="n">01 - SYSTEM</span><span class="t">Architecture map</span><span class="d">A first-pass map of the workspace layers and the main paths connecting them.</span><span class="s">FIRST PASS</span></a>
+<a class="item" href="./text-engine.html"><span class="n">02 - TEXT SYSTEM</span><span class="t">Text engine</span><span class="d">Buffers, snapshots, fragments, ropes, tree indexes, and the edit lifecycle.</span><span class="s">IN PROGRESS</span></a>
+<a class="item" href="./edit-lifecycle.html"><span class="n">03 - EDIT TRACE</span><span class="t">One edit. Many layers.</span><span class="d">Trace a text change through operations, fragments, anchors, undo, and remote replay.</span><span class="s">SOURCE-PINNED DEEP DIVE</span></a>
+<a class="item" href="./collaboration-lab.html"><span class="n">04 - COLLABORATION LAB</span><span class="t">Three replicas. One result.</span><span class="d">Walk through concurrent edits, different delivery orders, causal replay, and convergence tests.</span><span class="s">SOURCE-TEST TRACE</span></a>
+<a class="item" href="./invariants-and-adversarial-testing.html"><span class="n">05 - ENGINEERING AUDIT</span><span class="t">Invariants under pressure.</span><span class="d">Audit the checks, convergence simulator, known regressions, and adversarial test gaps.</span><span class="s">6 TESTS EXECUTED</span></a>
+<a class="item" href="./measurements.html"><span class="n">06 - MEASUREMENT</span><span class="t">Measured, not guessed.</span><span class="d">Insert latency versus document size, offset lookup cost, undo grouping, and rope chunk geometry.</span><span class="s">REAL RUN, RAW OUTPUT COMMITTED</span></a>
+<a class="item" href="./runtime.html"><span class="n">07 - RUNTIME</span><span class="t">One thread owns the state.</span><span class="d">The <code>!Send</code> executor, the 6:3:1 weighted priority draw, and Lamport ordering across replicas.</span><span class="s">13 TESTS EXECUTED</span></a>
+<a class="item" href="./locator.html"><span class="n">08 - POSITIONING</span><span class="t">Locator deep dive</span><span class="d">Ordered identifiers, insertion between positions, depth, and adversarial patterns.</span><span class="s">INITIAL NOTES</span></a>
+<a class="item" href="./text-engine.html#rope"><span class="n">09 - DATA STRUCTURE</span><span class="t">SumTree</span><span class="d">Aggregated summaries, multidimensional traversal, cursors, and copy-on-write behavior.</span><span class="s">14 TESTS EXECUTED</span></a>
+</div>
+
+<h2>02 / EVIDENCE MODEL</h2>
+<div class="panels">
+<div class="panel">
+<h3>Engineering, not guesswork.</h3>
+<p>This project distinguishes what the source code proves from what an engineer can reasonably infer, and from questions that still need experiments. Benchmarks are workload-specific; implementation details are tied to upstream source.</p>
+</div>
+<div class="panel">
+<h3>Three levels of confidence.</h3>
+<p class="ev"><span class="tag verified">VERIFIED</span> Directly supported by inspected source code or tests.</p>
+<p class="ev"><span class="tag analysis">ANALYSIS</span> An interpretation of observed implementation and likely consequences.</p>
+<p class="ev"><span class="tag hypothesis">HYPOTHESIS</span> An open claim requiring more tracing, tests, or measurement.</p>
+</div>
+</div>
+
+<h2>03 / RESEARCH PRINCIPLES</h2>
+<div class="grid">
+<div class="item"><span class="n">A / SOURCE FIRST</span><span class="t">Implementation before interpretation.</span><span class="d">Use exact paths, symbols, tests, and revision context.</span></div>
+<div class="item"><span class="n">B / TRACE END TO END</span><span class="t">Connect the layers.</span><span class="d">Follow an operation from public API to mutation, storage, history, and synchronization.</span></div>
+<div class="item"><span class="n">C / MEASURE</span><span class="t">No performance theatre.</span><span class="d">Separate asymptotic reasoning from observed benchmark results.</span></div>
+<div class="item"><span class="n">D / STAY HONEST</span><span class="t">Expose what's unknown.</span><span class="d">Keep open questions visible and update conclusions when the code changes.</span></div>
+</div>
+
+<h2>04 / UPSTREAM</h2>
+<div class="panels">
+<div class="panel">
+<h3>Zed Industries / Zed</h3>
+<p>This is an independent engineering study. It is not affiliated with, endorsed by, or sponsored by Zed Industries.</p>
+<p class="acts"><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Explore the upstream source</a></p>
+</div>
+<div class="panel">
+<h3>Open notebook. Living investigation.</h3>
+<p>Documentation, source links, diagrams, questions, and future benchmark plans live in the GitHub repository.</p>
+<p class="acts"><a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Browse repository</a></p>
+</div>
+</div></div>
 </main>
-<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span>RUST-FIRST / SOURCE-BASED / 2026</span></div></footer>
-</body></html>
+</div>
+<footer class="site-footer">
+<div class="foot-inner">
+<div class="foot-brand">
+<a href="./index.html" class="foot-logo" aria-label="BUGNARÖK" style="height:52px"></a>
+<p class="foot-tag">Independent engineering study of Zed's Rust engine. Not affiliated with Zed Industries.</p>
+</div>
+<nav class="foot-nav" aria-label="Secondary">
+<ul>
+<li><a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Repository<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Upstream<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/harness/tests" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Code<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/harness/results/suite-run.txt" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Sources<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/README.md" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>README<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li>
+</ul>
+</nav>
+</div>
+<div class="foot-bottom">
+<span><span class="foot-dot"></span>33 tests · 0 failures · Zed @ <code>2664a0aa</code></span>
+<span>Every claim is labelled VERIFIED, ANALYSIS or HYPOTHESIS.</span>
+</div>
+</footer>
+<script src="./assets/site.js" defer></script>
+</body>
+</html>

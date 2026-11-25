@@ -1,35 +1,72 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#090d12">
-<meta name="description" content="Measured behaviour of Zed's text engine: insert latency vs document size, offset_to_point cost, undo grouping, and rope chunk geometry - executed three times against the pinned upstream source.">
-<title>Measured, not guessed · Inside Zed</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Every number on this page came out of a binary linked against the pinned Zed source. The harness lives in harness/ in this repository.">
+<title>Measured,not guessed. · Inside Zed</title>
 <link rel="stylesheet" href="./style.css">
-<style>
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:22px 0 30px}
-.stat{padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:#0d1319}
-.stat b{display:block;font:700 26px/1.15 ui-monospace,monospace;color:var(--text);letter-spacing:-.02em}
-.stat span{display:block;margin-top:7px;font:600 10px/1.5 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
-table.num{width:100%;border-collapse:collapse;font:13px/1.55 ui-monospace,monospace;margin:16px 0 8px}
-table.num th{font:700 10px ui-monospace,monospace;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);text-align:right;padding:9px 10px;border-bottom:1px solid var(--line)}
-table.num th:first-child{text-align:left}
-table.num td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--line);color:#bac6d1}
-table.num td:first-child{text-align:left;color:var(--text);font-weight:650}
-table.num tr:last-child td{border-bottom:none}
-.cap{font-size:12px;color:var(--dim);margin:0 0 26px}
-.split-note{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0 28px}
-.split-note>div{padding:15px 17px;border:1px solid var(--line);border-radius:10px;background:#0d1319}
-.split-note h4{margin:0 0 8px;font:700 11px ui-monospace,monospace;letter-spacing:.09em;text-transform:uppercase}
-.split-note p{margin:0;font-size:13.5px;line-height:1.6;color:var(--muted)}
-@media(max-width:700px){.split-note{grid-template-columns:1fr}}
-</style>
+<link rel="preload" href="./assets/bugnarok-light.png" as="image">
+<script>
+(function () {
+  try {
+    var l = localStorage.getItem("ized-lang");
+    if (l === "fr") document.documentElement.setAttribute("lang", "fr");
+    var t = localStorage.getItem("ized-theme");
+    if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
-<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
-<div class="pagehead"><div class="wrap"><div class="crumb">ENGINE ROOM / 08 · PERFORMANCE</div><h1>Measured,<br>not guessed.</h1><p>Every number on this page came out of a binary linked against the pinned Zed source. The harness lives in <code>harness/</code> in this repository.</p><div class="hero-meta"><span class="pill">UPSTREAM 2664a0aa1eae</span><span class="pill">RELEASE BUILD</span><span class="pill">THREE INDEPENDENT RUNS</span></div></div></div>
-<main class="wrap content"><article class="article">
-
+<header class="topbar">
+<button class="tb-btn menu-btn" type="button" data-menu aria-label="Menu">☰</button>
+<a class="brand" href="./index.html"><span class="dot"></span>INSIDE ZED</a>
+<span class="spacer"></span>
+<a class="tb-link" href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a>
+<a class="tb-link" href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Repository ↗</a>
+<div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="fr" aria-pressed="false">FR</button></div>
+<button class="tb-btn" type="button" data-theme aria-label="Toggle theme">◐</button>
+</header>
+<div class="shell">
+<nav class="sidebar" aria-label="Docs">
+<div class="side-group">
+<h4>Get started</h4>
+<a href="./index.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Overview</a>
+</div>
+<div class="side-group">
+<h4>The engine</h4>
+<a href="./architecture.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Architecture</a>
+<a href="./text-engine.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Text engine</a>
+<a href="./text-engine.html#rope" class="sub"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>SumTree</a>
+<a href="./edit-lifecycle.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Edit lifecycle</a>
+<a href="./locator.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Locator</a>
+</div>
+<div class="side-group">
+<h4>Collaboration</h4>
+<a href="./collaboration-lab.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Collaboration lab</a>
+</div>
+<div class="side-group">
+<h4>Evidence</h4>
+<a href="./invariants-and-adversarial-testing.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Engineering audit</a>
+<a href="./measurements.html" aria-current="page"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Measurements</a>
+<a href="./runtime.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Runtime</a>
+</div>
+<div class="side-meta">
+Zed @ <code>2664a0aa</code><br>
+33 tests · 0 failures<br>
+<a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Repository ↗</a>
+</div>
+</nav>
+<main>
+<div class="layout">
+<article>
+<div class="doc-head">
+<div class="crumb">ENGINE ROOM / 08 · PERFORMANCE</div>
+<h1>Measured,<br>not guessed.</h1>
+<p class="lede">Every number on this page came out of a binary linked against the pinned Zed source. The harness lives in <code>harness/</code> in this repository.</p>
+</div>
+<div class="article">
 <h2 id="method">1. What was measured, and how</h2>
 <p>The harness is a small binary crate whose only dependencies are <code>path</code> links into a checkout of <code>zed-industries/zed</code> pinned at <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code>. It does not reimplement anything: it calls <code>Buffer::edit</code>, <code>Buffer::offset_to_point</code>, <code>Buffer::undo</code>, and <code>Rope::chunks</code> on the real types.</p>
 <pre>./tools/setup-zed.sh
@@ -180,7 +217,39 @@ cd harness &amp;&amp; cargo build --release
 cargo test --release</pre>
 <p>Step 1 needs network access to GitHub. The toolchain is Rust 1.100.0, the version the pinned upstream commit names in its own <code>rust-toolchain.toml</code>; <code>harness/rust-toolchain.toml</code> pins the same value. Verified from a clean checkout: <code>cargo test --release</code> builds and passes all 33 tests on stable, so no nightly is needed.</p>
 <div class="callout"><p><strong>REPRODUCIBILITY NOTE</strong> - raw output of all three runs is committed under <code>harness/results/</code> (<code>release-run.txt</code>, <code>-2</code>, <code>-3</code>). If a future run disagrees with a figure, the raw files are the reference and this page is what needs updating. Runs 1 and 2 came from the working copy; run 3 was produced from a fresh clone of the published repository. Expect timing medians to move by up to about 1.7× on the noisiest section; expect structural figures (bytes, chunk counts, checksum) to be exact.</p></div>
-
-</article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#method">Method</a><a href="#insert">Insert scaling</a><a href="#append">Appends</a><a href="#lookup">Offset lookup</a><a href="#undo">Undo grouping</a><a href="#rope">Rope geometry</a><a href="#limits">Limits</a><a href="#reproduce">Reproduce</a></aside></main>
-<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
-</body></html>
+</div>
+<div class="pager"><a href="./invariants-and-adversarial-testing.html"><span class="dir">Previous</span><span class="title">Engineering audit</span></a><a class="next" href="./runtime.html"><span class="dir">Next</span><span class="title">Runtime</span></a></div>
+</article>
+<aside class="toc"><h4>On this page</h4>
+<a href="#method">1. What was measured, and how</a>
+<a href="#insert">2. Insert cost versus document size</a>
+<a href="#append">3. Sustained appends</a>
+<a href="#lookup">4. Offset to point conversion</a>
+<a href="#undo">5. Undo grouping is a compile-time constant</a>
+<a href="#rope">6. Rope chunk geometry</a>
+<a href="#limits">7. What these numbers do not show</a>
+<a href="#reproduce">8. Reproducing</a>
+</aside>
+</div>
+</main>
+</div>
+<footer class="site-footer">
+<div class="foot-inner">
+<div class="foot-brand">
+<a href="./index.html" class="foot-logo" aria-label="BUGNARÖK" style="height:52px"></a>
+<p class="foot-tag">Independent engineering study of Zed's Rust engine. Not affiliated with Zed Industries.</p>
+</div>
+<nav class="foot-nav" aria-label="Secondary">
+<ul>
+<li><a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Repository<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Upstream<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/harness/tests" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Code<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/harness/results/suite-run.txt" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Sources<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/README.md" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>README<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li>
+</ul>
+</nav>
+</div>
+<div class="foot-bottom">
+<span><span class="foot-dot"></span>33 tests · 0 failures · Zed @ <code>2664a0aa</code></span>
+<span>Every claim is labelled VERIFIED, ANALYSIS or HYPOTHESIS.</span>
+</div>
+</footer>
+<script src="./assets/site.js" defer></script>
+</body>
+</html>

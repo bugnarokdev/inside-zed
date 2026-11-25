@@ -1,17 +1,72 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#090d12">
-<meta name="description" content="Zed's UI runtime and concurrency model, traced from source: a !Send local executor, a 6:3:1 weighted priority queue, Lamport timestamps and version-vector joins - all exercised by executed tests.">
-<title>UI runtime &amp; concurrency · Inside Zed</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Zed&#x27;s UI runtime keeps an Rc/RefCell object graph alive across asynchronous work. That is only sound because the executor holding it is !Send, the priority queue is a weighted draw that renormalises over non-empty queues, and cross-replica ordering is a Lamport timestamp over a four-slot inline version vector. Each claim below is traced to a line of the pinned checkout, and the concurrency and fairness rules are covered by executed tests.">
+<title>One thread owns the state. The compiler knows. · Inside Zed</title>
 <link rel="stylesheet" href="./style.css">
+<link rel="preload" href="./assets/bugnarok-light.png" as="image">
+<script>
+(function () {
+  try {
+    var l = localStorage.getItem("ized-lang");
+    if (l === "fr") document.documentElement.setAttribute("lang", "fr");
+    var t = localStorage.getItem("ized-theme");
+    if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
-<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
-<div class="pagehead"><div class="wrap"><div class="crumb">FIELD GUIDE / 05 · RUNTIME</div><h1>One thread owns the state. The compiler knows.</h1><p>Zed's UI runtime keeps an <code>Rc</code>/<code>RefCell</code> object graph alive across asynchronous work. That is only sound because the executor holding it is <code>!Send</code>, the priority queue is a weighted draw that renormalises over non-empty queues, and cross-replica ordering is a Lamport timestamp over a four-slot inline version vector. Each claim below is traced to a line of the pinned checkout, and the concurrency and fairness rules are covered by executed tests.</p></div></div>
-<main class="wrap content"><article class="article">
-
+<header class="topbar">
+<button class="tb-btn menu-btn" type="button" data-menu aria-label="Menu">☰</button>
+<a class="brand" href="./index.html"><span class="dot"></span>INSIDE ZED</a>
+<span class="spacer"></span>
+<a class="tb-link" href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a>
+<a class="tb-link" href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Repository ↗</a>
+<div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="fr" aria-pressed="false">FR</button></div>
+<button class="tb-btn" type="button" data-theme aria-label="Toggle theme">◐</button>
+</header>
+<div class="shell">
+<nav class="sidebar" aria-label="Docs">
+<div class="side-group">
+<h4>Get started</h4>
+<a href="./index.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Overview</a>
+</div>
+<div class="side-group">
+<h4>The engine</h4>
+<a href="./architecture.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Architecture</a>
+<a href="./text-engine.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Text engine</a>
+<a href="./text-engine.html#rope" class="sub"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>SumTree</a>
+<a href="./edit-lifecycle.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Edit lifecycle</a>
+<a href="./locator.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Locator</a>
+</div>
+<div class="side-group">
+<h4>Collaboration</h4>
+<a href="./collaboration-lab.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Collaboration lab</a>
+</div>
+<div class="side-group">
+<h4>Evidence</h4>
+<a href="./invariants-and-adversarial-testing.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Engineering audit</a>
+<a href="./measurements.html"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Measurements</a>
+<a href="./runtime.html" aria-current="page"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Runtime</a>
+</div>
+<div class="side-meta">
+Zed @ <code>2664a0aa</code><br>
+33 tests · 0 failures<br>
+<a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer">Repository ↗</a>
+</div>
+</nav>
+<main>
+<div class="layout">
+<article>
+<div class="doc-head">
+<div class="crumb">FIELD GUIDE / 05 · RUNTIME</div>
+<h1>One thread owns the state. The compiler knows.</h1>
+<p class="lede">Zed's UI runtime keeps an <code>Rc</code>/<code>RefCell</code> object graph alive across asynchronous work. That is only sound because the executor holding it is <code>!Send</code>, the priority queue is a weighted draw that renormalises over non-empty queues, and cross-replica ordering is a Lamport timestamp over a four-slot inline version vector. Each claim below is traced to a line of the pinned checkout, and the concurrency and fairness rules are covered by executed tests.</p>
+</div>
+<div class="article">
 <div class="callout"><p><strong>Scope and revision.</strong> Every file reference, line number and code excerpt on this page comes from Zed at commit <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code>. The tests named here are in this repository and run against that checkout's own crates (<code>scheduler</code>, <code>clock</code>) via <code>tools/setup-zed.sh</code>. Nothing on this page describes a reimplementation.</p></div>
 
 <h2 id="shape">The runtime is three crates, not one</h2>
@@ -189,7 +244,39 @@ cargo run --release --bin priority-draw</pre>
 <p><strong>Costs.</strong> Every background task that touches UI state must round-trip through the local executor, which is a queue hop per interaction. Priority is advisory: a 6:3:1 draw can still run low-priority work late under sustained load, because nothing in the weights bounds latency, only long-run share. A weight-0 priority must be dispatched elsewhere or it never runs, so the classification and the dispatch are coupled by convention rather than by the type. And the clock crate, which every collaborative edit depends on, has no internal tests: correctness there is currently inferred from the behaviour of its consumers and from tests like the ones on this page.</p>
 
 <p class="pillrow"><span class="pill">19 TESTS EXECUTED</span><span class="pill">PINNED 2664a0aa</span><span class="pill">TOOLCHAIN 1.100.0</span></p>
-
-</article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#shape">Three crates</a><a href="#not-send">The !Send executor</a><a href="#priority">Weighted fairness</a><a href="#measured">The draw, measured</a><a href="#determinism">Deterministic runtime</a><a href="#clock">Replica ordering</a><a href="#meet">What zero means</a><a href="#evidence">Executed evidence</a><a href="#tradeoffs">Trade-offs</a></aside></main>
-<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
-</body></html>
+</div>
+<div class="pager"><a href="./measurements.html"><span class="dir">Previous</span><span class="title">Measurements</span></a><a class="next" href="./architecture.html"><span class="dir">Next</span><span class="title">Architecture</span></a></div>
+</article>
+<aside class="toc"><h4>On this page</h4>
+<a href="#shape">The runtime is three crates, not one</a>
+<a href="#not-send">The !Send executor is the load-bearing idea</a>
+<a href="#priority">Fairness is a weighted draw, not a strict heap</a>
+<a href="#measured">The draw, measured</a>
+<a href="#determinism">Determinism is a first-class feature of the runtime</a>
+<a href="#clock">Ordering across replicas, with no tests upstream</a>
+<a href="#evidence">Executed evidence</a>
+<a href="#tradeoffs">What this design buys and what it costs</a>
+</aside>
+</div>
+</main>
+</div>
+<footer class="site-footer">
+<div class="foot-inner">
+<div class="foot-brand">
+<a href="./index.html" class="foot-logo" aria-label="BUGNARÖK" style="height:52px"></a>
+<p class="foot-tag">Independent engineering study of Zed's Rust engine. Not affiliated with Zed Industries.</p>
+</div>
+<nav class="foot-nav" aria-label="Secondary">
+<ul>
+<li><a href="https://github.com/bugnarokdev/inside-zed" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Repository<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Upstream<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/harness/tests" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Code<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/harness/results/suite-run.txt" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>Sources<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li><li><a href="https://github.com/bugnarokdev/inside-zed/blob/main/README.md" target="_blank" rel="noreferrer"><span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>README<svg viewBox="0 0 6 6" fill="none" aria-hidden="true"><path d="M0 .5H5.5V6M5.5.5.25 5.75" stroke="currentColor" stroke-width="1"/></svg></a></li>
+</ul>
+</nav>
+</div>
+<div class="foot-bottom">
+<span><span class="foot-dot"></span>33 tests · 0 failures · Zed @ <code>2664a0aa</code></span>
+<span>Every claim is labelled VERIFIED, ANALYSIS or HYPOTHESIS.</span>
+</div>
+</footer>
+<script src="./assets/site.js" defer></script>
+</body>
+</html>

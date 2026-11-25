@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="An initial investigation of Zed's ordered text locators, the insertion-between operation, and the limits of the available tests.">
+<title>Locator deep dive · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<div class="pagehead"><div class="wrap"><div class="crumb">INVESTIGATION / 03</div><h1>Positions without renumbering.</h1><p>An initial investigation of Zed's ordered text locators, the insertion-between operation, and the limits of the available tests.</p></div></div>
+<main class="wrap content"><article class="article">
+<h2 id="source">Source and core operation</h2>
+<p>The implementation is in <a href="https://github.com/zed-industries/zed/blob/main/crates/text/src/locator.rs"><code>crates/text/src/locator.rs</code></a>. The type is <code>Locator</code>; the key operation is <code>Locator::between(lhs, rhs)</code>.</p>
+<p>The inspected locator is backed by <code>SmallVec&lt;[u64; 2]&gt;</code>. Its <code>between</code> operation constructs a value ordered between two existing locators, using numeric gaps where possible.</p>
+<h2 id="tests">What the tests establish</h2>
+<p>The inspected tests include a 100,000-step sequential forward append scenario and a 10,000-insertion-at-cursor scenario. They check that locator depth remains shallow for those particular patterns.</p>
+<div class="callout"><p><strong>VERIFIED</strong> - the implementation and tests explicitly exercise locator depth under large sequential and repeated-at-cursor insertion patterns.</p></div>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - stable ordering identifiers can remove the need to renumber every later position when inserting between existing positions. The tests indicate common typing patterns are an optimization target.</p></div>
+<h2 id="open">Open questions</h2>
+<ul><li>What depth results from repeated insertions into the same narrow interval?</li><li>How does comparison cost scale with depth?</li><li>Are there normalization or compaction paths?</li><li>Which invariants apply when operations from different replicas are merged?</li><li>Which property tests cover ordering, uniqueness, and convergence?</li></ul>
+<div class="callout hypothesis"><p><strong>HYPOTHESIS TO TEST</strong> - adversarial insertion patterns may produce deeper locators and more expensive comparisons. This is not established by the common-pattern tests alone.</p></div>
+<h2 id="benchmark">Benchmark plan</h2>
+<p>A useful benchmark suite should vary workload shape rather than report one aggregate number:</p>
+<ol><li>Append-only insertion.</li><li>Repeated insertion at a fixed cursor.</li><li>Alternating insertion on both sides of a narrow interval.</li><li>Randomized insertion among existing positions.</li><li>Merge operations generated independently by multiple replicas.</li></ol>
+<p>Record elapsed time and resulting locator depth. Keep the workload, input size, hardware, and revision alongside every result.</p></article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#source">Source</a><a href="#tests">Existing tests</a><a href="#open">Open questions</a><a href="#benchmark">Benchmark plan</a></aside></main>
+<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
+</body></html>

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="Measured behaviour of Zed's text engine: insert latency vs document size, offset_to_point cost, undo grouping, and rope chunk geometry - executed three times against the pinned upstream source.">
+<title>Measured, not guessed · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+<style>
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:22px 0 30px}
+.stat{padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:#0d1319}
+.stat b{display:block;font:700 26px/1.15 ui-monospace,monospace;color:var(--text);letter-spacing:-.02em}
+.stat span{display:block;margin-top:7px;font:600 10px/1.5 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+table.num{width:100%;border-collapse:collapse;font:13px/1.55 ui-monospace,monospace;margin:16px 0 8px}
+table.num th{font:700 10px ui-monospace,monospace;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);text-align:right;padding:9px 10px;border-bottom:1px solid var(--line)}
+table.num th:first-child{text-align:left}
+table.num td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--line);color:#bac6d1}
+table.num td:first-child{text-align:left;color:var(--text);font-weight:650}
+table.num tr:last-child td{border-bottom:none}
+.cap{font-size:12px;color:var(--dim);margin:0 0 26px}
+.split-note{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0 28px}
+.split-note>div{padding:15px 17px;border:1px solid var(--line);border-radius:10px;background:#0d1319}
+.split-note h4{margin:0 0 8px;font:700 11px ui-monospace,monospace;letter-spacing:.09em;text-transform:uppercase}
+.split-note p{margin:0;font-size:13.5px;line-height:1.6;color:var(--muted)}
+@media(max-width:700px){.split-note{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<div class="pagehead"><div class="wrap"><div class="crumb">ENGINE ROOM / 08 · PERFORMANCE</div><h1>Measured,<br>not guessed.</h1><p>Every number on this page came out of a binary linked against the pinned Zed source. The harness lives in <code>harness/</code> in this repository.</p><div class="hero-meta"><span class="pill">UPSTREAM 2664a0aa1eae</span><span class="pill">RELEASE BUILD</span><span class="pill">THREE INDEPENDENT RUNS</span></div></div></div>
+<main class="wrap content"><article class="article">
+
+<h2 id="method">1. What was measured, and how</h2>
+<p>The harness is a small binary crate whose only dependencies are <code>path</code> links into a checkout of <code>zed-industries/zed</code> pinned at <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code>. It does not reimplement anything: it calls <code>Buffer::edit</code>, <code>Buffer::offset_to_point</code>, <code>Buffer::undo</code>, and <code>Rope::chunks</code> on the real types.</p>
+<pre>./tools/setup-zed.sh
+cd harness &amp;&amp; cargo build --release &amp;&amp; ./target/release/inside-zed-harness</pre>
+<p>The page reports <strong>three independent runs</strong> - same host, separately materialised builds, the third from a fresh clone of the published repository - because one run is not evidence of stability. All three raw outputs are committed: <code>harness/results/release-run.txt</code>, <code>release-run-2.txt</code>, and <code>release-run-3.txt</code>. Where they disagree, the disagreement is printed rather than averaged away.</p>
+
+<div class="split-note">
+<div><h4>Deterministic results</h4><p>Structural facts that reproduce bit-for-bit: chunk count, chunk size, document growth, tree shape. No timing involved, so no noise.</p></div>
+<div><h4>Timing results</h4><p>Medians that moved between runs. Reported per run or as a spread, never as a single authoritative figure.</p></div>
+</div>
+
+<div class="callout"><p><strong>SCOPE</strong> - micro-benchmarks of the text crate in isolation. No GPU, no <code>gpui</code> runtime, no filesystem, no highlighting. They isolate data-structure cost, which is what a source study is trying to characterise.</p></div>
+
+<h2 id="insert">2. Insert cost versus document size</h2>
+<p>A single insertion at offset 0 of a freshly built buffer, 25 reps per size, median and minimum per run. The <code>ns/MB</code> column divides median time by document size: if the engine were O(n) in document size, that column would stay flat.</p>
+<table class="num">
+<thead><tr><th>lines</th><th>bytes</th><th>median µs<br>run 1</th><th>median µs<br>run 2</th><th>median µs<br>run 3</th><th>spread<br>3 runs</th><th>ns per MB<br>run 1</th></tr></thead>
+<tbody>
+<tr><td>1 000</td><td>33 890</td><td>6.83</td><td>7.62</td><td>6.32</td><td>1.21×</td><td>211 386</td></tr>
+<tr><td>10 000</td><td>348 890</td><td>14.78</td><td>12.96</td><td>15.30</td><td>1.18×</td><td>44 412</td></tr>
+<tr><td>50 000</td><td>1 788 890</td><td>17.74</td><td>13.73</td><td>12.90</td><td>1.38×</td><td>10 400</td></tr>
+<tr><td>100 000</td><td>3 588 890</td><td>19.18</td><td>21.76</td><td>12.69</td><td>1.71×</td><td>5 603</td></tr>
+<tr><td>200 000</td><td>7 288 890</td><td>38.31</td><td>38.43</td><td>48.08</td><td>1.26×</td><td>5 512</td></tr>
+</tbody>
+</table>
+<p class="cap">Content per line: <code>fn line_NNNNNN() { let x = N; }</code> plus newline, 33.89 bytes average (the count grows with the line number's digit width). Sizes are measured from the generated string by <code>doc.len()</code>. Run 3 was executed from a fresh clone of the published repository, not the working copy.</p>
+<div class="callout analysis"><p><strong>READ THE SPREAD BEFORE THE MEDIAN</strong> - the same measurement on the same machine swings up to 1.71× (100 000 lines: 12.69 / 19.18 / 21.76 µs). A third independent run was not needed to confirm the trend; it was needed to show how large the noise is. Publishing one number per size would have implied a precision this harness does not have.</p></div>
+<p>The <code>ns/MB</code> column falls by about 38× while the document grows 215×. That column uses run 1 only; taking each size's <em>slowest</em> of the three runs, the fall is still 34×. The trend is therefore robust to the noise. An editor copying the document per keystroke would show a flat or rising number; this shows the opposite.</p>
+<div class="callout analysis"><p><strong>WHY THIS SECTION IS THE NOISY ONE</strong> - loop A builds a fresh <code>Buffer</code> per rep, so every timed edit lands on a cold tree with the allocator and caches in an arbitrary state. Loop A2, published below, reuses one buffer and measures the same edit warm; it varies by 1.11-1.13× instead of 1.71×. The instability here is a property of the measurement design, not of the engine, and the two loops bracket it from both sides.</p></div>
+
+<h3>A second variant, and why it reports higher numbers</h3>
+<p>The harness has a second loop over the same sizes. Read it before trusting it, because it does <em>more</em> per rep, not less:</p>
+<pre>// A: fresh buffer per rep, static "x", construction OUTSIDE the timer
+for _ in 0..25 {
+    let mut b = buf(&amp;doc);
+    let t = Instant::now();
+    b.edit([(0..0, "x")]);
+    s.push(t.elapsed().as_secs_f64() * 1e6);
+}
+
+// A2: one buffer reused, format!() INSIDE the timer, 100 reps
+for i in 0..100 {
+    let t = Instant::now();
+    b.edit([(0..0, format!("{i}"))]);
+    s.push(t.elapsed().as_secs_f64() * 1e6);
+}</pre>
+<table class="num">
+<thead><tr><th>lines</th><th>A run 1<br>µs</th><th>A2 run 1<br>µs</th><th>A run 2<br>µs</th><th>A2 run 2<br>µs</th><th>A2 run 3<br>µs</th></tr></thead>
+<tbody>
+<tr><td>1 000</td><td>6.83</td><td>10.480</td><td>7.62</td><td>11.822</td><td>10.500</td></tr>
+<tr><td>50 000</td><td>17.74</td><td>11.993</td><td>13.73</td><td>13.185</td><td>11.923</td></tr>
+<tr><td>200 000</td><td>38.31</td><td>13.906</td><td>38.43</td><td>14.507</td><td>12.845</td></tr>
+</tbody>
+</table>
+<p>A2 is not "A minus construction". It times a <code>format!</code> allocation plus an edit into a buffer that has already absorbed <code>i</code> earlier insertions, so it measures a different workload. The only column that isolates the data structure is <strong>A</strong>, where construction sits outside the clock and the inserted text is a static <code>&amp;str</code>.</p>
+<p>The A2 row is still worth publishing for one reason: across all three runs it stays between 10.48 and 14.51 µs over a 215× size range, and its own spread is only 1.11-1.13×. Once the per-rep work is fixed and small, document size barely matters - which is the same conclusion A reaches from the other direction, with far less noise.</p>
+<div class="callout"><p><strong>CORRECTION TO AN EARLIER DRAFT</strong> - an earlier version of this page described A2 as isolating the edit by removing <code>Buffer::new</code> from the timer. That was wrong: A already excludes construction. Reading the source is what caught it. Both loops are published above so the claim can be checked rather than taken on trust.</p></div>
+
+<h2 id="append">3. Sustained appends</h2>
+<p>1 000 sequential insertions at the end of a 100 000-line document:</p>
+<table class="num">
+<thead><tr><th>metric</th><th>run 1</th><th>run 2</th><th>run 3</th></tr></thead>
+<tbody>
+<tr><td>total for 1 000 edits</td><td>11.15 ms</td><td>11.16 ms</td><td>10.25 ms</td></tr>
+<tr><td>median per edit</td><td>10.57 µs</td><td>10.61 µs</td><td>9.96 µs</td></tr>
+<tr><td>worst single edit</td><td>46.59 µs</td><td>70.05 µs</td><td>44.93 µs</td></tr>
+<tr><td>document growth</td><td colspan="3">3 588 890 → 3 588 990 bytes (+1 000, exact, in all runs)</td></tr>
+</tbody>
+</table>
+<p>The median is one of the most reproducible numbers on this page: 9.96 / 10.57 / 10.61 µs across three independent builds, a 6.5% total spread. It is also slightly <em>lower</em> than the single-edit figures in section 2 (17.74 µs in A at 50 000 lines, 11.99 µs in A2), which fits an append at the end of the tree being a cheaper path than an insert at offset 0.</p>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - the worst case is the least stable figure (46.59 / 70.05 / 44.93 µs) and should never be quoted as a bound. A single outlier edit is what a node split plus a cache miss looks like; across 1 000 samples, one such event moves the maximum a lot. The stable median is the load-bearing claim.</p></div>
+<p>Document growth is exactly the bytes written: 1 000 single-byte edits add exactly 1 000 bytes. The rope stores text without padding or per-edit slack, so no capacity slack is hidden between what the document contains and what it costs.</p>
+<p>One limit on this section: the harness reports the median and maximum over the run but does not bucket the samples by position in the sequence, so it cannot show whether the last edit is slower than the first. The claim supported here is a stable per-edit median, not a proof that appends never degrade.</p>
+
+<h2 id="lookup">4. Offset to point conversion</h2>
+<p>Converting a byte offset into a row/column <code>Point</code>, 10 000 lookups scattered across a 100 000-line document:</p>
+<table class="num">
+<thead><tr><th>metric</th><th>run 1</th><th>run 2</th><th>run 3</th></tr></thead>
+<tbody>
+<tr><td>median</td><td>81 ns</td><td>90 ns</td><td>120 ns</td></tr>
+<tr><td>p99</td><td>552 ns</td><td>502 ns</td><td>571 ns</td></tr>
+<tr><td>p99 ÷ median</td><td>6.8×</td><td>5.6×</td><td>4.8×</td></tr>
+<tr><td>checksum of all results</td><td colspan="3"><code>499857184</code>, identical in all three runs</td></tr>
+</tbody>
+</table>
+<p>This is the operation a renderer performs per visible line, so it matters more than insert cost for typing feel. At 81-120 ns median, converting a thousand visible lines costs on the order of 80-120 µs before any layout or shaping work.</p>
+<div class="callout verified"><p><strong>THE CHECKSUM IS THE REAL RESULT</strong> - all 10 000 converted points hash to <code>499857184</code> in every run, on three separate builds from two separate checkouts. The timings vary by up to 1.5×; the computed answer does not vary at all. If the tree walk had a bug that returned a wrong point for some offsets, the checksum would move. This is the one place on the page where a claim is exact rather than statistical.</p></div>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - the tail is the interesting part: p99 sits at 4.8-6.8× the median across the three runs. That is the cost shape of walking a tree whose depth varies with position, where the deepest leaves pay most. A flat distribution would imply a cached line index, which is not what the source shows.</p></div>
+
+<h2 id="undo">5. Undo grouping is a compile-time constant</h2>
+<p>Undo coalescing uses a time window: edits inside the window collapse into one undo step. The value is fixed at construction in <code>History::new</code> (<code>crates/text/src/text.rs</code>):</p>
+<pre>group_interval: if cfg!(any(test, feature = "test-support")) {
+    Duration::ZERO
+} else {
+    Duration::from_millis(300)
+}</pre>
+<p>The behaviour therefore differs between a production build and any build enabling <code>test-support</code>. Cargo feature unification makes that easy to hit by accident: if a dev-dependency enables <code>test-support</code>, the measurement binary inherits the test value.</p>
+<div class="callout"><p><strong>TRAP, OBSERVED</strong> - the first version of this harness reported <code>group_interval = 0ns</code> and 2 undo steps for 2 rapid edits. The cause was not the engine but <code>test-support</code> leaking in through <code>dev-dependencies</code>. The harness now prints the compiled-in default and then exercises both intervals explicitly, so the mechanism is visible instead of accidentally measured.</p></div>
+<table class="num">
+<thead><tr><th>group_interval</th><th>undo steps for 2 rapid edits</th><th>text after full undo</th></tr></thead>
+<tbody>
+<tr><td>300 ms (production)</td><td>1</td><td><code>"hello"</code></td></tr>
+<tr><td>0 ns (test)</td><td>2</td><td><code>"hello"</code></td></tr>
+</tbody>
+</table>
+<p>Both configurations restore the exact original text; only granularity differs. One undo step per typing burst is the intended behaviour.</p>
+
+<h2 id="rope">6. Rope chunk geometry</h2>
+<p>Walking the chunk iterator of a 100 000-line document. These figures are identical in all three runs because they are structural, not timed:</p>
+<div class="grid2">
+<div class="stat"><b>3 588 890 B</b><span>document size</span></div>
+<div class="stat"><b>28 039</b><span>chunks</span></div>
+<div class="stat"><b>128.0 B</b><span>average chunk</span></div>
+<div class="stat"><b>128 B</b><span>max chunk</span></div>
+</div>
+<p>Average and maximum are both 128 (the harness prints <code>128.0</code> after dividing 3 588 890 by 28 039, which is 127.996; the average is truncated on display, and the max is the hard leaf capacity). The exact figure matters: the average sits a rounding error <em>below</em> the capacity, which is what a tree filled by splitting at 128 bytes looks like. No chunk exceeds the cap.</p>
+<p>The constant is not arbitrary. In <code>crates/rope/src/chunk.rs</code> the chunk is a fixed-capacity text buffer whose size derives from a bitmap width:</p>
+<pre>#[cfg(not(all(test, not(rust_analyzer))))]
+pub(crate) type Bitmap = u128;
+#[cfg(all(test, not(rust_analyzer)))]
+pub(crate) type Bitmap = u16;
+
+pub(crate) const MAX_BASE: usize = Bitmap::BITS as usize;
+pub(crate) const MIN_BASE: usize = MAX_BASE / 2;</pre>
+<p>So <code>MAX_BASE</code> is 128 in a normal build and 16 when the rope crate compiles its own unit tests. Each chunk carries four bitmaps over its own bytes - UTF-8 character starts, UTF-16 offsets, newlines, tabs - plus the text itself. 128 bytes is where that per-byte summary stays inside two 64-bit registers while the tree keeps a low fan-out cost.</p>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - this number explains several others here. A 3.6 MB document needs 28 039 leaves. With a 128-byte leaf and a fan-out around 16, that is a 3-to-4 level tree. Depth grows as log(n), so a 215× larger document costs only a handful of extra levels, not 215× the work. That is the mechanism behind the near-flat ns/byte column in section 2, and why the ratio stayed stable while absolute timings did not.</p></div>
+
+<h2 id="limits">7. What these numbers do not show</h2>
+<ul>
+<li><strong>Interior edits under load.</strong> Offset 0 and appends are covered; random interior positions with concurrent anchors are not.</li>
+<li><strong>Multi-replica throughput.</strong> Delivery, deferred draining, and undo across replicas are exercised by the test suite, not timed here.</li>
+<li><strong>End-to-end frame cost.</strong> Layout, shaping, and GPU draw are outside this harness. An 81 ns offset lookup says nothing about whether a frame fits in 16 ms.</li>
+<li><strong>Other machines.</strong> Absolute latencies are host-specific, and the run-to-run spread documented above is a floor on the uncertainty, not a ceiling.</li>
+<li><strong>Allocation behaviour.</strong> No allocator instrumentation, so split cost is inferred from latency jitter, not counted.</li>
+<li><strong>The 200k-line row.</strong> The median moves a lot across runs (38.31 / 38.43 / 48.08 µs), and within each run the minimum sits 15-24 µs below the median. That single row is the least trustworthy on the page: it is reported in full rather than quietly averaged.</li>
+<li><strong>512-byte slices.</strong> 1 000 slices of 512 bytes at positions spread across the whole 3.6 MB document: median 1183 / 1282 / 1183 ns, so about 1.2 µs. The scatter stride is <code>(i * 4099) % (len - 512)</code>, which covers the document rather than a hot region. Stable across runs because the cost is a tree descent to a position plus copying 512 bytes, and neither depends much on total size.</li>
+</ul>
+
+<h2 id="reproduce">8. Reproducing</h2>
+<pre># 1. pin the upstream source (sparse, blob-filtered)
+./tools/setup-zed.sh
+
+# 2. build and run the measurements
+cd harness &amp;&amp; cargo build --release
+./target/release/inside-zed-harness
+
+# 3. run the adversarial tests against the same crates
+cargo test --release</pre>
+<p>Step 1 needs network access to GitHub. The toolchain is Rust 1.100.0, the version the pinned upstream commit names in its own <code>rust-toolchain.toml</code>; <code>harness/rust-toolchain.toml</code> pins the same value. Verified from a clean checkout: <code>cargo test --release</code> builds and passes all 33 tests on stable, so no nightly is needed.</p>
+<div class="callout"><p><strong>REPRODUCIBILITY NOTE</strong> - raw output of all three runs is committed under <code>harness/results/</code> (<code>release-run.txt</code>, <code>-2</code>, <code>-3</code>). If a future run disagrees with a figure, the raw files are the reference and this page is what needs updating. Runs 1 and 2 came from the working copy; run 3 was produced from a fresh clone of the published repository. Expect timing medians to move by up to about 1.7× on the noisiest section; expect structural figures (bytes, chunk counts, checksum) to be exact.</p></div>
+
+</article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#method">Method</a><a href="#insert">Insert scaling</a><a href="#append">Appends</a><a href="#lookup">Offset lookup</a><a href="#undo">Undo grouping</a><a href="#rope">Rope geometry</a><a href="#limits">Limits</a><a href="#reproduce">Reproduce</a></aside></main>
+<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
+</body></html>

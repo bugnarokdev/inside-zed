@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="Zed's UI runtime and concurrency model, traced from source: a !Send local executor, a 6:3:1 weighted priority queue, Lamport timestamps and version-vector joins - all exercised by executed tests.">
+<title>UI runtime &amp; concurrency · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<div class="pagehead"><div class="wrap"><div class="crumb">FIELD GUIDE / 05 · RUNTIME</div><h1>One thread owns the state. The compiler knows.</h1><p>Zed's UI runtime keeps an <code>Rc</code>/<code>RefCell</code> object graph alive across asynchronous work. That is only sound because the executor holding it is <code>!Send</code>, the priority queue is a weighted draw that renormalises over non-empty queues, and cross-replica ordering is a Lamport timestamp over a four-slot inline version vector. Each claim below is traced to a line of the pinned checkout, and the concurrency and fairness rules are covered by executed tests.</p></div></div>
+<main class="wrap content"><article class="article">
+
+<div class="callout"><p><strong>Scope and revision.</strong> Every file reference, line number and code excerpt on this page comes from Zed at commit <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code>. The tests named here are in this repository and run against that checkout's own crates (<code>scheduler</code>, <code>clock</code>) via <code>tools/setup-zed.sh</code>. Nothing on this page describes a reimplementation.</p></div>
+
+<h2 id="shape">The runtime is three crates, not one</h2>
+<p>The parts that decide <em>when</em> work runs are split out of <code>gpui</code> into <code>crates/scheduler</code>. That separation is what makes the scheduling rules testable without a window: the executor, the priority enum and a deterministic test scheduler all live in a crate with no rendering dependency.</p>
+<pre>gpui/src/queue.rs        weighted pop over three priority queues
+crates/scheduler/
+  scheduler.rs           Priority, Priority::weight(), Scheduler trait
+  executor.rs            LocalExecutor (!Send), SendLocalExecutor, BackgroundExecutor
+  test_scheduler.rs      TestScheduler: seeded, deterministic, single-threaded
+  tests.rs               31 #[test] functions - the only tests in the crate
+crates/clock/            ordering across replicas
+  clock.rs               285 lines, Lamport, Global, ReplicaId
+  system_clock.rs         49 lines</pre>
+<p>Measured at the pin: <code>crates/scheduler</code> is <strong>3215 lines</strong> with <strong>31</strong> tests, all in <code>tests.rs</code>. <code>crates/clock</code> is <strong>334 lines</strong> with <strong>zero</strong> tests. That asymmetry is the reason this page ships its own tests for the clock rather than pointing at existing ones.</p>
+
+<h2 id="not-send">The <code>!Send</code> executor is the load-bearing idea</h2>
+<p>A GUI framework that mutates shared state from event handlers, async tasks and background workers has to answer one question: who is allowed to touch the object graph? Zed's answer is a type-level one. <code>LocalExecutor</code> carries a marker field whose only purpose is to make the type immovable across threads:</p>
+<pre>crates/scheduler/src/executor.rs
+
+/// A `!Send` executor pinned to a single session. Tasks spawned on it run in
+/// order on whichever thread drains the dispatch destination supplied at
+/// construction time - typically the main thread for the default session, or
+/// a dedicated OS thread for sessions created by `spawn_dedicated_thread`.
+#[derive(Clone)]
+pub struct LocalExecutor {
+    session_id: SessionId,
+    scheduler: Arc&lt;dyn Scheduler&gt;,
+    dispatch: Arc&lt;dyn Fn(Runnable&lt;RunnableMeta&gt;) + Send + Sync&gt;,
+    not_send: PhantomData&lt;Rc&lt;()&gt;&gt;,
+}</pre>
+<p><code>PhantomData&lt;Rc&lt;()&gt;&gt;</code> contributes nothing at runtime. It exists solely so that <code>Rc</code>'s lack of <code>Send</code> propagates to <code>LocalExecutor</code>. The consequence is that the type that runs UI futures <em>cannot</em> be moved to another thread, so the <code>Rc&lt;RefCell&lt;..&gt;&gt;</code> graph it touches cannot be mutated concurrently. There is no lock, no atomic swap and no runtime check: the borrow checker rejects the program.</p>
+<div class="callout"><p><strong>This was tested, and the first attempt was wrong.</strong> The first version of <code>harness/tests/ui_runtime.rs</code> asserted <code>LocalExecutor: Send</code>. The compiler refused it. The negative property is therefore recorded as a compile error rather than a runtime assertion, because no stable API can assert <code>!Send</code> inside a test body. What <em>is</em> assertable is the bridge, and that is what the test pins.</p></div>
+<p>Crossing a thread boundary is an explicit opt-in through <code>to_send()</code>, which produces a <code>SendLocalExecutor</code> that accepts only <code>Send</code> futures and posts them back to the same dispatch destination:</p>
+<pre>/// Creates a thread-safe handle that submits `Send` futures to this
+/// executor's dispatch destination.
+pub fn to_send(&self) -&gt; SendLocalExecutor {
+    SendLocalExecutor {
+        _scheduler: self.scheduler.clone(),
+        dispatch: self.dispatch.clone(),
+    }
+}</pre>
+<p>So the rule is not "the UI is single-threaded" as a convention. It is: single-threaded state is protected by a type that is physically unable to leave its thread, and background work reaches it only through a handle that refuses non-<code>Send</code> payloads. <code>harness/tests/ui_runtime.rs</code> pins <code>SendLocalExecutor</code>, <code>BackgroundExecutor</code> and <code>SessionId</code> as <code>Send + Sync</code>, and <code>LocalExecutor</code> as <code>Clone</code> (how it is shared within a thread), so the boundary is asserted from the side that compiles.</p>
+
+<h2 id="priority">Fairness is a weighted draw, not a strict heap</h2>
+<p>A strict priority queue starves low-priority work. Zed instead keeps three queues and picks among them by probability, using hard-coded weights:</p>
+<pre>crates/scheduler/src/scheduler.rs
+
+impl Priority {
+    /// Returns the relative probability weight for this priority level.
+    /// Used by schedulers to determine task selection probability.
+    pub const fn weight(self) -&gt; u32 {
+        match self {
+            Priority::High =&gt; 60,
+            Priority::Medium =&gt; 30,
+            Priority::Low =&gt; 10,
+            // realtime priorities are not considered for probability scheduling
+            Priority::RealtimeAudio =&gt; 0,
+        }
+    }
+}</pre>
+<p>Three details matter, and all three are easy to get wrong when describing this design:</p>
+<ul>
+<li><strong>60/30/10 is 6:3:1, and it sums to 100.</strong> The numbers read as percentages, which is why the ratio is discoverable without running the code. <code>Medium</code> is <code>#[default]</code>, so unannotated work is not the least favoured.</li>
+<li><strong><code>RealtimeAudio</code> has weight 0</strong> and is excluded from the draw entirely, because realtime work is dispatched on its own thread. It is in the enum for classification, not for selection.</li>
+<li><strong>The weights are only relative to the queues that are non-empty.</strong> The selector multiplies each weight by whether that queue has work, then renormalises:</li>
+</ul>
+<pre>crates/gpui/src/queue.rs, spin_try_pop()
+
+let high   = P::High.weight()   * !queues.high_priority.is_empty()   as u32;
+let medium = P::Medium.weight() * !queues.medium_priority.is_empty() as u32;
+let low    = P::Low.weight()    * !queues.low_priority.is_empty()    as u32;
+let mut mass = high + medium + low;
+
+if !queues.high_priority.is_empty() {
+    let flip = self.rand.random_ratio(P::High.weight(), mass);
+    if flip { return Ok(queues.high_priority.pop_front()); }
+    mass -= P::High.weight();
+}</pre>
+<p>This is a sequential draw, not a single weighted choice: high is tried first with probability <code>60/mass</code>, and if it loses, its weight leaves the mass before medium is tried. With all three queues occupied the shares are exactly 60/30/10. The renormalisation is what makes an idle queue harmless: if only the low queue has work, the mass is 10 rather than 100, so low is selected with probability <code>10/10</code> and runs immediately instead of waiting on a 10% chance against two empty queues.</p>
+
+<h2 id="measured">The draw, measured</h2>
+<p><code>harness/src/bin/priority-draw.rs</code> reads <code>Priority::weight()</code> out of the real crate and replays the same walk over a fixed-seed xorshift64*, so the numbers below are reproducible on any machine without depending on <code>rand</code>'s version. One million draws over the three weighted priorities:</p>
+<table>
+<thead><tr><th>Priority</th><th>Weight</th><th>Measured share</th><th>Nominal</th></tr></thead>
+<tbody>
+<tr><td>High</td><td>60</td><td>60.063%</td><td>60%</td></tr>
+<tr><td>Medium</td><td>30</td><td>29.921%</td><td>30%</td></tr>
+<tr><td>Low</td><td>10</td><td>10.015%</td><td>10%</td></tr>
+</tbody></table>
+<p>Maximum absolute deviation from nominal: <strong>0.079 percentage points</strong> over 1&nbsp;000&nbsp;000 draws (high 600&nbsp;635, medium 299&nbsp;210, low 100&nbsp;155). <code>RealtimeAudio</code> was then placed in the candidate list next to <code>High</code> and <code>Low</code> for 200&nbsp;000 draws and was selected <strong>zero times</strong>: a zero-width band can never contain a target drawn from <code>[0, mass)</code>.</p>
+<p>The honest framing of this measurement: it validates the <em>arithmetic contract</em> of the weights, not the behaviour of a running editor. It shows that the published weights produce the documented shares when consumed by the real selection loop. It says nothing about frame times, and this page draws no conclusion about them.</p>
+
+<h2 id="determinism">Determinism is a first-class feature of the runtime</h2>
+<p>Scheduling bugs are order-dependent, and order-dependent bugs are hard to reproduce. Zed's answer is to ship a scheduler that can be driven by a seed. <code>TestSchedulerConfig</code> is public and exposes the knobs that make a run reproducible:</p>
+<pre>crates/scheduler/src/test_scheduler.rs
+
+pub struct TestSchedulerConfig {
+    pub seed: u64,
+    pub randomize_order: bool,
+    pub allow_parking: bool,
+    pub capture_pending_traces: bool,
+    pub timeout_ticks: RangeInclusive&lt;usize&gt;,
+}
+
+impl TestSchedulerConfig {
+    pub fn with_seed(seed: u64) -&gt; Self { ... }
+}</pre>
+<p><code>randomize_order</code> defaults to <code>true</code>, which means the weighted selection path is on the hot path during tests as well, not only in production. That is a deliberate trade: tests explore orderings rather than replaying one fixed interleaving. <code>harness/tests/ui_runtime.rs</code> asserts the seed is actually carried (<code>with_seed(42).seed == 42</code>, and two different seeds do not collapse), that <code>randomize_order</code> is the default, and that a freshly built <code>TestScheduler</code> starts with an empty queue and returns from <code>run()</code> with it still empty.</p>
+
+<h2 id="clock">Ordering across replicas, with no tests upstream</h2>
+<p><code>crates/clock</code> is the smallest crate on this page and the one with the most surprising audit result: <strong>334 lines, zero <code>#[test]</code> functions</strong>. The ordering rules that every collaborative edit depends on are exercised only indirectly, through the <code>text</code> crate's operation tests. This repository therefore tests them directly, in <code>harness/tests/concurrency.rs</code>.</p>
+
+<h3>The timestamp: value first, replica id breaks ties</h3>
+<pre>crates/clock/src/clock.rs
+
+impl Ord for Lamport {
+    fn cmp(&amp;self, other: &amp;Self) -&gt; Ordering {
+        // Use the replica id to break ties between concurrent events.
+        self.value
+            .cmp(&amp;other.value)
+            .then_with(|| self.replica_id.cmp(&amp;other.replica_id))
+    }
+}</pre>
+<p>Causal order is carried by <code>value</code>; the replica id is only consulted when two events are concurrent. That distinction is tested both ways: a later value from a lower replica still sorts after an earlier value from a higher one (<code>Lamport{value:5, replica:1} &gt; Lamport{value:4, replica:9}</code>), and equal values from different replicas get a deterministic total order rather than comparing equal.</p>
+
+<h3>The packing is lossless</h3>
+<pre>pub fn as_u64(self) -&gt; u64 {
+    ((self.value as u64) &lt;&lt; 32) | (self.replica_id.0 as u64)
+}</pre>
+<p>A 32-bit sequence in the high half and a 16-bit replica in the low half. Because it is a pure shift-or of non-overlapping fields, sorting by the packed integer must agree with <code>Ord</code> for causally related pairs. The test checks both: six distinct timestamps pack to six distinct integers, and the packed order matches the causal order.</p>
+
+<h3>The version vector is four slots wide by default</h3>
+<pre>pub struct Global {
+    // 4 is chosen as it is the biggest count that does not increase the size of the field itself.
+    // Coincidentally, it also covers all the important non-collab replica ids.
+    values: SmallVec&lt;[u32; 4]&gt;,
+}</pre>
+<p>Everything up to four replicas stays inline; a fifth replica spills to the heap. The four reserved ids are <code>LOCAL = 0</code>, <code>REMOTE_SERVER = 1</code>, <code>AGENT = 2</code>, <code>LOCAL_BRANCH = 3</code>, and <code>FIRST_COLLAB_ID = 8</code> is the threshold above which a replica counts as a peer:</p>
+<pre>pub fn is_remote(self) -&gt; bool {
+    self == ReplicaId::REMOTE_SERVER || self &gt;= ReplicaId::FIRST_COLLAB_ID
+}</pre>
+<p>The test asserts the predicate agrees with the constants on both sides of the threshold: id 7 is not remote, id 8 is, and the four reserved ids classify as documented.</p>
+
+<h3 id="meet">A zero slot means "unobserved", and that changes what <code>meet</code> does</h3>
+<p>This is the subtlest part of the crate, and the place where a plausible-sounding description is wrong. <code>join</code> is a per-replica maximum, which is ordinary. <code>meet</code> looks like its dual and on paper is a per-replica minimum, but a zero entry does not mean "sequence 0", it means "this replica was never observed". A literal element-wise minimum would therefore erase knowledge that only one side holds. The implementation special-cases zero:</p>
+<pre>match (*left, right) {
+    // left has not observed the replica
+    (0, _) =&gt; *left = right,
+    // right has not observed the replica
+    (_, 0) =&gt; (),
+    (_, _) =&gt; *left = cmp::min(*left, right),
+}</pre>
+<p>The practical consequence, which the test pins: <code>meet</code> with an empty vector keeps the other side's knowledge rather than zeroing it, and <code>meet</code> is symmetric even when one side is empty. Both properties follow from the two <code>0</code> arms, and both would break under a naive <code>min</code>. The test also checks the minimum on the ordinary case (<code>[1:6, 2:1] meet [1:2, 2:9]</code> gives <code>[1:2, 2:1]</code>), and idempotence.</p>
+<div class="callout"><p><strong>A wrong hypothesis, recorded.</strong> The first version of the test asserted that <code>meet</code> was <em>asymmetric</em>: that an unobserved left slot is filled from the right while an unobserved right slot leaves the left untouched, so <code>meet(a,b) != meet(b,a)</code>. That was a misreading. Running it produced a failure, and a 500-case randomised probe (random version vectors over four replicas, values 0 to 5) found <strong>zero</strong> commutativity, associativity or idempotence violations. The asymmetry claim was deleted and replaced with what the code actually does. The probe is described here rather than kept, because the property it tests is now covered structurally by the committed test.</p></div>
+<p>What the other tests pin: <code>join</code> is the per-replica maximum and is commutative and associative (verified on concrete vectors, including that joining never loses knowledge); <code>observe</code> always advances strictly past the observed timestamp, including the fast path and the case where the local clock is already ahead; <code>observed</code>, <code>observed_any</code> and <code>observed_all</code> treat an unseen replica as unobserved rather than as zero, which is what gates deferred operations.</p>
+
+<h2 id="evidence">Executed evidence</h2>
+<p>Two test files back the claims above. Both compile against the pinned checkout's own crates, both are in this repository, and both were run on the toolchain Zed pins:</p>
+<table>
+<thead><tr><th>File</th><th>Crate under test</th><th>Tests</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td><code>harness/tests/concurrency.rs</code></td><td><code>clock</code> (334 lines, 0 upstream tests)</td><td>8</td><td><strong>8 passed</strong></td></tr>
+<tr><td><code>harness/tests/ui_runtime.rs</code></td><td><code>scheduler</code> (3215 lines, 31 upstream tests)</td><td>5</td><td><strong>5 passed</strong></td></tr>
+<tr><td><code>harness/tests/adversarial.rs</code></td><td><code>text</code></td><td>5</td><td><strong>5 passed</strong></td></tr>
+<tr><td><code>harness/tests/permutations.rs</code></td><td><code>text</code></td><td>1</td><td><strong>1 passed</strong></td></tr>
+</tbody></table>
+<p>Full suite: <strong>33 tests, 33 passed, 0 failed, 0 warnings</strong>, on <code>rustc 1.100.0 (0ef1bc386 2026-11-09)</code>. The raw output is committed as <code>harness/results/suite-run.txt</code> and the fairness measurement as <code>harness/results/priority-draw.txt</code>, so no figure on this page rests on a recollection. Reproduce with:</p>
+<pre>./tools/setup-zed.sh
+cd harness
+cargo test --release
+cargo run --release --bin priority-draw</pre>
+
+<h2 id="tradeoffs">What this design buys and what it costs</h2>
+<p><strong>Buys.</strong> The single-threaded object graph needs no locks, so entity reads are plain memory reads and there is no lock contention on the UI path. <code>!Send</code> makes that sound at compile time rather than by convention. The weighted draw removes starvation without an aging mechanism. A seeded scheduler makes order-dependent bugs reproducible. A four-slot inline version vector keeps the common case allocation-free.</p>
+<p><strong>Costs.</strong> Every background task that touches UI state must round-trip through the local executor, which is a queue hop per interaction. Priority is advisory: a 6:3:1 draw can still run low-priority work late under sustained load, because nothing in the weights bounds latency, only long-run share. A weight-0 priority must be dispatched elsewhere or it never runs, so the classification and the dispatch are coupled by convention rather than by the type. And the clock crate, which every collaborative edit depends on, has no internal tests: correctness there is currently inferred from the behaviour of its consumers and from tests like the ones on this page.</p>
+
+<p class="pillrow"><span class="pill">19 TESTS EXECUTED</span><span class="pill">PINNED 2664a0aa</span><span class="pill">TOOLCHAIN 1.100.0</span></p>
+
+</article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#shape">Three crates</a><a href="#not-send">The !Send executor</a><a href="#priority">Weighted fairness</a><a href="#measured">The draw, measured</a><a href="#determinism">Deterministic runtime</a><a href="#clock">Replica ordering</a><a href="#meet">What zero means</a><a href="#evidence">Executed evidence</a><a href="#tradeoffs">Trade-offs</a></aside></main>
+<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
+</body></html>

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="An engineering audit of Zed's text-buffer invariants, randomized convergence tests, causal replay, and adversarial collaboration scenarios.">
+<title>Invariants under pressure · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+<style>
+.matrix{width:100%;border-collapse:collapse;font-size:13px;line-height:1.55;margin:18px 0 26px}
+.matrix th{font:700 10px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;text-align:left;color:var(--dim);padding:10px;border-bottom:1px solid var(--line)}
+.matrix td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top;color:#bac6d1}
+.matrix td:first-child{color:var(--text);font-weight:650;min-width:155px}
+.matrix code{white-space:nowrap}
+.verdict{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.verdict .panel{padding:18px}
+.verdict strong{display:block;font:700 10px ui-monospace,monospace;letter-spacing:.12em;margin-bottom:9px}
+.verdict p{margin:0}
+@media(max-width:760px){.verdict{grid-template-columns:1fr}.matrix{font-size:12px}.matrix td:first-child{min-width:110px}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<div class="pagehead"><div class="wrap"><div class="crumb">ENGINE ROOM / 07 · ENGINEERING AUDIT</div><h1>Invariants<br>under pressure.</h1><p>What does Zed's text engine actually check? What do its convergence tests exercise? And where do the current tests leave room for adversarial cases?</p><div class="hero-meta"><span class="pill">UPSTREAM 2664a0aa1eae</span><span class="pill">TEXT / CLOCK / NETWORK</span><span class="pill">SOURCE AUDIT + TEST PLAN</span></div></div></div>
+<main class="wrap content"><article class="article">
+<h2 id="thesis">The engineering question</h2>
+<p>A collaborative text engine has to preserve several kinds of correctness at once: ordered fragment identity, consistency between indexes and text storage, causal replay, undo visibility, stable positions, and eventual agreement between replicas.</p>
+<p>Zed does not ask one function to prove all of that. The inspected code has a structural <code>Buffer::check_invariants</code>, local reference-model tests, deterministic multi-replica tests, and a randomized in-memory network. Those layers provide useful evidence - but they are not interchangeable.</p>
+<div class="panel">
+<div class="kicker">EXECUTIVE FINDING</div>
+<p><strong>check_invariants is a structural consistency checker, not a convergence proof.</strong> The randomized collaboration test adds meaningful schedule variation, duplicate delivery, and undo/redo. The remaining gap is systematic conflict coverage: same-range edits, delete-versus-insert, overlapping deletions with independent undo, and explicit causal-gap tests.</p>
+</div>
+
+<h2 id="invariants">1. Dissecting <code>check_invariants</code></h2>
+<p>At the pinned revision, <code>Buffer::check_invariants</code> is a short, explicit set of assertions in <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L1742-L1787" target="_blank" rel="noreferrer">crates/text/src/text.rs · lines 1742–1787 ↗</a>. Read literally, it checks four contracts.</p>
+<table class="matrix">
+<thead><tr><th>Check</th><th>What is asserted</th><th>Failure class caught</th></tr></thead>
+<tbody>
+<tr><td>Fragment order</td><td>Every fragment's <code>Locator</code> is strictly greater than the preceding fragment ID.</td><td>Duplicate or out-of-order fragment positions in the fragment tree.</td></tr>
+<tr><td>Forward index mapping</td><td>For each fragment, lookup by <code>(timestamp, insertion_offset)</code> in the insertion tree must find an entry whose <code>fragment_id</code> matches.</td><td>A fragment without its corresponding insertion-index record, or a mismatched locator.</td></tr>
+<tr><td>Reverse index mapping</td><td>Walking insertion-index entries and seeking the fragment tree must find the same locator and insertion offset.</td><td>An insertion-index entry pointing to a missing or mismatched fragment.</td></tr>
+<tr><td>Rope summary lengths</td><td>The fragment summary's visible/deleted byte counts must equal <code>visible_text.len()</code> and <code>deleted_text.len()</code>.</td><td>Length-accounting divergence between fragment summaries and the two ropes.</td></tr>
+<tr><td>Line-ending normalization</td><td>The visible text must not contain a CRLF pair.</td><td>CRLF surviving in the normalized internal text representation.</td></tr>
+</tbody>
+</table>
+<div class="callout"><p><strong>Important distinction</strong> - the two index walks together check correspondence in both directions, not merely that each visible fragment can be found. The check is stronger than a simple length assertion, but it remains structural.</p></div>
+
+<h3>What this checker does not assert</h3>
+<ul>
+<li>It does not compare the actual bytes reconstructed from fragments with the bytes inside the visible/deleted ropes. The summary comparison checks lengths, not content equality.</li>
+<li>It does not independently recompute every fragment's <code>visible</code> flag from insertion, deletion, and undo history.</li>
+<li>It does not validate the contents or coverage of <code>insertion_slices</code>, anchor round-trips, or the semantic correctness of historical snapshots.</li>
+<li>It does not inspect whether deferred operations are eventually drained, whether a causal dependency is missing, or whether distinct replicas have converged.</li>
+<li>It does not prove that a deletion or undo affected the intended logical characters. Those properties need behavioral tests with an expected document.</li>
+</ul>
+<p>This is not a criticism of the function's size. A fast invariant checker should target cheap internal consistency. The engineering mistake would be treating a passing call as evidence for properties it never examines.</p>
+
+<h2 id="local-tests">2. The local reference-model tests</h2>
+<p><code>test_random_edits</code> provides a separate oracle for ordinary local editing. It starts from a small random string, generates edits, applies the same changes to a reference <code>String</code>, and compares the result with the buffer. It also checks range summaries, subscriptions/patch replay, historical rope snapshots, and anchor-based range updates before calling <code>check_invariants</code>.</p>
+<p>Source: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L171-L307" target="_blank" rel="noreferrer">test_random_edits · lines 171–307 ↗</a>.</p>
+<p>Other focused tests exercise anchor movement through insertion/deletion and bias behavior at boundaries (<a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L527-L665" target="_blank" rel="noreferrer">anchor tests ↗</a>), undo/redo grouping (<a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L668-L806" target="_blank" rel="noreferrer">history tests ↗</a>), and large insertions split at UTF-8 character boundaries (<a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L1033-L1158" target="_blank" rel="noreferrer">multibyte and split tests ↗</a>).</p>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - these tests triangulate different properties: a reference string checks visible content; patch replay checks incremental updates; snapshot checks exercise history; anchor assertions check stable positions. None alone substitutes for the others.</p></div>
+
+<h2 id="convergence">3. What the collaboration tests actually simulate</h2>
+<h3>Deterministic three-replica example</h3>
+<p><code>test_concurrent_edits</code> creates three replicas from <code>abcdef</code>. Each replaces a different character, then receives the other two operations in different orders. All three must finish as <code>a12c34e56</code>.</p>
+<p>Source: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L845-L869" target="_blank" rel="noreferrer">test_concurrent_edits ↗</a>.</p>
+<p>This is a useful sanity check for merging independent edits. It is not a conflict test: its three replaced ranges do not overlap.</p>
+
+<h3>Randomized collaboration test</h3>
+<p><code>test_random_concurrent_edits</code> is the more interesting test. It is annotated for 100 test iterations. Unless overridden by environment variables, each run creates five peers and schedules ten mutation events. A mutation is either a local random edit or an undo/redo action; peers also receive pending network messages in partial batches.</p>
+<p>Its in-memory <code>Network</code> deliberately makes delivery messy:</p>
+<ul>
+<li>Each broadcast message is copied between one and three times into every other peer's inbox.</li>
+<li>Each copy is inserted at a random position in that inbox, so later messages can appear before earlier ones.</li>
+<li>A receive drains a randomly sized prefix of the inbox, not necessarily the whole queue.</li>
+</ul>
+<p>Sources: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/network.rs#L1-L70" target="_blank" rel="noreferrer">test network simulator ↗</a> and <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L913-L991" target="_blank" rel="noreferrer">test_random_concurrent_edits ↗</a>.</p>
+<div class="panel">
+<div class="kicker">WHAT THE TEST ASSERTS AFTER THE NETWORK QUIETS</div>
+<pre>for every replica:
+    visible_text == replica_0.visible_text
+    check_invariants()</pre>
+<p>The test checks invariants during the schedule for the currently selected buffer, then compares final visible text across replicas and checks the other replicas again at convergence.</p>
+</div>
+<p>The receiver's causal gate is also important. <code>apply_ops</code> queues operations whose captured version has not yet been observed. <code>flush_deferred_ops</code> retries them after new operations arrive, while <code>deferred_replicas</code> prevents a later operation from the same replica from jumping ahead of an earlier deferred one. An operation already observed by the local version is not applied again.</p>
+<p>Sources: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L909-L955" target="_blank" rel="noreferrer">apply_ops / apply_op ↗</a> and <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L1276-L1299" target="_blank" rel="noreferrer">deferred queue and causal readiness ↗</a>.</p>
+<p>A minimal dependency-gap test can make the deferral contract explicit: create two sequential operations on one sender, deliver the second first, and then deliver its prerequisite.</p>
+<pre>#[test]
+fn test_deferred_operation_applies_after_its_dependency() {
+    let buffer_id = BufferId::new(1).unwrap();
+    let mut sender = Buffer::new(ReplicaId::new(1), buffer_id, "ab");
+    let mut receiver = Buffer::new(ReplicaId::new(2), buffer_id, "ab");
+
+    let first = sender.edit([(1..1, "X")]);
+    let second = sender.edit([(2..2, "Y")]);
+
+    receiver.apply_ops([second]);
+    assert!(receiver.has_deferred_ops());
+
+    receiver.apply_ops([first]);
+    assert!(!receiver.has_deferred_ops());
+    assert_eq!(receiver.text(), "aXYb");
+    receiver.check_invariants();
+}</pre>
+<p>This exercises the actual dependency gap and the retry path rather than relying on the random simulator to happen to produce it. This proposal is also not yet run.</p>
+
+<h3>What the simulator does not model</h3>
+<p>This is a strong unit-level delivery simulator, not a distributed-systems deployment test. It has in-memory inboxes and eventual delivery. It does not simulate process restarts, durable log recovery, server persistence, authentication/session changes, real transport framing, or permanent message loss. Its random schedules provide sampling, not exhaustive enumeration of every legal schedule.</p>
+
+<h2 id="semantic-core">4. The semantic core: what a remote edit is allowed to delete</h2>
+<p>The key distinction in the fragment model is between text that exists now and text the sending operation had observed when it was created.</p>
+<p><code>EditOperation</code> carries a Lamport timestamp, a causal <code>version</code>, full-offset ranges, and replacement strings. A remote edit walks fragments in the sender's versioned coordinate space. When it intersects a fragment, it adds its deletion timestamp only if the operation's version had observed that fragment and the fragment was visible in that version. A fragment inserted concurrently - and therefore absent from that version - is not treated as old text that the remote operation can erase.</p>
+<p>Sources: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L624-L637" target="_blank" rel="noreferrer">EditOperation and UndoOperation ↗</a>, <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L1081-L1119" target="_blank" rel="noreferrer">remote intersection and deletion handling ↗</a>, and <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L3156-L3208" target="_blank" rel="noreferrer">fragment visibility predicates and summaries ↗</a>.</p>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - the causal version is not decorative metadata. It decides which fragments count as part of the sender's observed document. This is the foundation for reasoning about delete-versus-insert and overlapping replacement races.</p></div>
+<p>Undo follows the same operation-aware model. A fragment is visible only when its insertion is not currently undone and all deletion operations affecting it have been undone. The undo map evaluates undo counts against the version being queried, rather than simply restoring a previous whole-document string. See <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/undo_map.rs#L1-L115" target="_blank" rel="noreferrer">UndoMap ↗</a>.</p>
+
+<h2 id="adversarial">5. Adversarial test matrix</h2>
+<p>The next step is not to invent a grand claim about collaboration. It is to turn the risky interactions into tiny deterministic tests, with two or three replicas, controlled timestamps, explicit delivery orders, and exact expected text.</p>
+<table class="matrix">
+<thead><tr><th>Scenario</th><th>Minimal setup</th><th>Property to assert</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>Same-cursor insertion</td><td>From <code>ab</code>, A inserts <code>X</code> at 1 and B inserts <code>Y</code> at 1 before sync.</td><td>Both delivery directions produce the same deterministic order.</td><td><span class="tag analysis">SOURCE-DERIVED</span> Proposed test in the <a href="./collaboration-lab.html">collaboration lab</a>.</td></tr>
+<tr><td>Delete versus inner insert</td><td>From <code>abcdef</code>, A deletes <code>2..5</code>; B inserts <code>X</code> at <code>3..3</code>, both before sync.</td><td>The delete must not erase an insertion that its causal version never observed; replicas must agree on placement.</td><td><span class="tag hypothesis">NOT TESTED</span></td></tr>
+<tr><td>Same-range replacement</td><td>A and B replace the same original range with different strings from the same base version.</td><td>Concurrent inserted fragments survive; both delivery orders converge to one well-defined result.</td><td><span class="tag hypothesis">NOT TESTED</span></td></tr>
+<tr><td>Overlapping deletes + one undo</td><td>A deletes <code>1..4</code>; B deletes <code>2..5</code>; sync, then undo only A's edit.</td><td>Only characters covered exclusively by A's deletion return. Shared deleted characters remain hidden until B's deletion is also undone.</td><td><span class="tag analysis">MODEL-DERIVED</span></td></tr>
+<tr><td>Causal gap</td><td>A creates op1, then op2 based on op1. Deliver op2 to B before op1.</td><td>op2 is deferred; when op1 arrives, op1 applies and the deferred op2 is flushed. No permanent deferred work remains.</td><td><span class="tag hypothesis">NOT TESTED EXPLICITLY</span></td></tr>
+<tr><td>Duplicate delivery</td><td>Deliver the same operation multiple times, both in one batch and across separate receives.</td><td>Visible text changes once; already-observed timestamps do not mutate the buffer again.</td><td><span class="tag analysis">PARTLY STRESSED</span> Duplicates occur in the random simulator.</td></tr>
+<tr><td>Undo/redo race</td><td>One replica undoes an edit while another makes a concurrent edit touching the same logical range; reorder both operation streams.</td><td>Undo affects only its targeted edit IDs; replicas converge after all causal prerequisites arrive.</td><td><span class="tag hypothesis">NOT ISOLATED</span></td></tr>
+<tr><td>Unicode boundary conflict</td><td>Insert/delete around multi-byte UTF-8 characters concurrently, including an emoji and combining marks.</td><td>No invalid byte boundary, split fragment, lost code point, or divergent anchor resolution.</td><td><span class="tag analysis">PARTLY COVERED</span> Local split and anchor tests exist; collaborative conflict is not isolated.</td></tr>
+</tbody>
+</table>
+
+<h3>Why the delete/insert case matters</h3>
+<p>Use base text <code>abcdef</code>. A deletes <code>cde</code> (<code>2..5</code>) while B inserts <code>X</code> between <code>c</code> and <code>d</code> (<code>3..3</code>), with both operations created from the original version. The expected visible result after full synchronization is <code>abXf</code>: the insertion is concurrent text, not part of the characters A observed and deleted.</p>
+<p>That expectation follows from the observed-version check in remote deletion handling, but it should still be converted into an upstream test with both delivery orders and invariant checks. The test should also capture the anchor position around the insertion point before either operation.</p>
+<p>The following is a concrete test proposal for <code>crates/text/src/tests.rs</code>. It checks both peer perspectives and two different delivery orders on fresh replicas. It has been derived from the inspected APIs and semantics; it has not been compiled or run.</p>
+<pre>#[test]
+fn test_concurrent_delete_preserves_unobserved_insert() {
+    let buffer_id = BufferId::new(1).unwrap();
+    let mut a = Buffer::new(ReplicaId::new(1), buffer_id, "abcdef");
+    let mut b = Buffer::new(ReplicaId::new(2), buffer_id, "abcdef");
+
+    let delete = a.edit([(2..5, "")]);
+    let insert = b.edit([(3..3, "X")]);
+
+    // Each author receives the other author's concurrent operation.
+    a.apply_ops([insert.clone()]);
+    b.apply_ops([delete.clone()]);
+
+    // Two fresh replicas receive the same operations in opposite orders.
+    let mut c = Buffer::new(ReplicaId::new(3), buffer_id, "abcdef");
+    c.apply_ops([delete.clone(), insert.clone()]);
+    let mut d = Buffer::new(ReplicaId::new(4), buffer_id, "abcdef");
+    d.apply_ops([insert, delete]);
+
+    for buffer in [&a, &b, &c, &d] {
+        assert_eq!(buffer.text(), "abXf");
+        buffer.check_invariants();
+    }
+}</pre>
+
+<h3>Why overlapping deletes plus undo matters</h3>
+<p>From <code>abcdef</code>, A deletes <code>bcd</code> and B deletes <code>cde</code>, both based on the same starting state. After both operations converge, the visible text should be <code>af</code>. Undoing only A's deletion should restore <code>b</code>, but not <code>cde</code>, because B's deletion still applies to those characters: the intermediate result should be <code>abf</code>. Undoing B as well should restore <code>abcdef</code>.</p>
+<p>This is a direct, human-readable test of the rule that every deletion affecting a fragment must be undone before that fragment becomes visible again. It exercises the interaction between <code>Fragment::is_visible</code>, the undo map, and remote operation propagation - not just the local undo stack.</p>
+
+<h2 id="known-regression">6. An existing adversarial regression</h2>
+<p>Zed already contains a useful example of the kind of edge case this investigation should seek. <code>test_edit_partially_intersecting_a_deleted_fragment</code> starts with <code>abcdefgh</code>, deletes <code>cde</code>, then applies a synthetic remote edit whose full-offset range covers <code>b</code> and only part of the deleted fragment (<code>cd</code>, not <code>e</code>).</p>
+<p>The test comment records the historical failure: the rope builder could try to consume the full deleted fragment when only part of it was intersected, causing a panic with <code>cannot summarize past end of rope</code>. The regression asserts the resulting text <code>afgh</code> and then undoes the synthetic edit to get <code>abfgh</code> back.</p>
+<p>Source: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L871-L911" target="_blank" rel="noreferrer">partial deleted-fragment regression ↗</a>.</p>
+<div class="callout"><p><strong>Engineering lesson</strong> - adversarial tests should target representation boundaries, not only user-visible edit stories. Here the bug was a partial intersection between a versioned full-offset range, a deleted fragment, and the rope builder's accounting.</p></div>
+
+<h2 id="recommended">7. A practical investigation sequence</h2>
+<ol>
+<li><strong>Add the delete-versus-inner-insert test.</strong> It probes the causal rule that should protect concurrent text from a delete that never observed it.</li>
+<li><strong>Add the overlapping-delete/independent-undo test.</strong> It probes whether visibility is derived correctly from multiple deletion IDs and undo counts.</li>
+<li><strong>Add a causal-gap test.</strong> Deliver a dependent operation first, assert <code>has_deferred_ops()</code>, deliver its prerequisite, then assert the queue drains and the final document is correct.</li>
+<li><strong>Add same-range replacement and undo-race tests.</strong> Record both delivery permutations and compare all replicas, not only one receiver.</li>
+<li><strong>Promote the matrix into a deterministic schedule fuzzer.</strong> For a small number of replicas and operations, enumerate permutations that preserve each replica's causal order, inject duplicates, and compare final text plus semantic invariants.</li>
+</ol>
+<p>The current randomized test is valuable, but small exhaustive schedules are often better at explaining exactly why a conflict rule works. Random tests can then broaden the search after the expected semantics are explicit.</p>
+
+<h2 id="verdict">8. Where the evidence stands</h2>
+<div class="verdict">
+<div class="panel"><strong style="color:var(--mint)">VERIFIED</strong><p>Fragment/index correspondence, ordering, rope-length accounting, LF normalization, local reference-model behavior, and convergence under the schedules exercised by existing tests.</p></div>
+<div class="panel"><strong style="color:var(--blue)">SUPPORTED ANALYSIS</strong><p>Version-aware remote replay protects fragments unknown to the sender; undo visibility is accumulated across deletion operations. The code paths provide a concrete model for predicting conflict behavior.</p></div>
+<div class="panel"><strong style="color:var(--amber)">NOT ESTABLISHED</strong><p>Universal convergence, exhaustive conflict semantics, formal CRDT guarantees, resilience to permanent message loss or process recovery, and performance under adversarial workloads.</p></div>
+</div>
+<p>This is the evidence boundary. It neither dismisses the implementation nor claims more than the inspected tests show.</p>
+
+<h2 id="harness">9. Executed evidence: two independent runs</h2>
+<p>Two separate executions back the claims on this page. They are not interchangeable, and neither is an estimate.</p>
+
+<h3>Run 1 - patch applied to a clean upstream checkout (CI)</h3>
+<p>The five deterministic cases were packaged as a patch. A GitHub Actions job checks out the pinned revision, validates the patch with <code>git apply --check</code>, applies it, then runs the full crate suite. No upstream file is committed by this project.</p>
+<ul>
+<li><a href="https://github.com/bugnarokdev/inside-zed/blob/research/adversarial-tests-ci/research/patches/text-adversarial-tests.patch" target="_blank" rel="noreferrer">Adversarial Rust test patch ↗</a></li>
+<li><a href="https://github.com/bugnarokdev/inside-zed/blob/research/adversarial-tests-ci/.github/workflows/zed-text-adversarial.yml" target="_blank" rel="noreferrer">CI workflow ↗</a></li>
+<li><a href="https://github.com/bugnarokdev/inside-zed/actions/runs/45544928667" target="_blank" rel="noreferrer">CI run ↗</a></li>
+</ul>
+<div class="callout verified"><p><strong>RUN 1: GREEN</strong> - the job log reports <code>running 43 tests</code> and <code>test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.95s</code>. All five adversarial tests appear individually as <code>ok</code>. Both figures are quoted from the log, not recomputed.</p></div>
+<div class="callout"><p><strong>WHY GREPPING THE LOG GIVES 35, NOT 43</strong> - this trips up anyone auditing the artefact, so it is documented rather than hidden. The log interleaves test output with <code>INFO</code> lines emitted <em>during</em> a test, and eight of them land between the test name and its verdict:</p>
+<pre>test tests::test_line_len ... 2026-11-25T04:16:14+00:00 INFO [text::patch::tests] editing 0..3: "MOE"</pre>
+<p>The trailing <code>ok</code> is pushed onto the next output line, so a grep for <code>^test .* \.\.\. ok$</code> finds 35 of 43. Counting the distinct <code>test NAME ...</code> prefixes finds all 43 - the eight missing ones are exactly the tests that log while running. The authoritative figure is the harness's own summary line (<code>43 passed; 0 failed</code>), and the 8 names are recoverable, which is how this was verified rather than assumed.</p></div>
+
+<h3>Run 2 - standalone harness, no patch, sixth case included</h3>
+<p>The repository also carries <code>harness/</code>, a small crate whose dependencies are <code>path</code> links into a pinned Zed checkout. It needs no patch and no upstream modification: it links the real <code>text</code>, <code>rope</code>, <code>clock</code>, and <code>sum_tree</code> crates and calls them directly. Building with the <code>test-support</code> feature exposes <code>Buffer::check_invariants()</code>, so each scenario asserts Zed's own structural consistency, not just string equality.</p>
+<pre>./tools/setup-zed.sh          # sparse, filtered checkout of the pin
+cd harness &amp;&amp; cargo test --release</pre>
+<div class="callout verified"><p><strong>RUN 2: 6 PASSED, 0 FAILED</strong> - measured locally on the pin <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code> with Rust 1.100.0, the toolchain that commit itself declares. Every case below executed and returned <code>ok</code>. The same six tests were then re-run from a fresh clone of this published repository, with the vendor tree rebuilt by <code>tools/setup-zed.sh</code>, and passed again - so the result does not depend on the state of a working copy.</p></div>
+<table><thead><tr><th>Adversarial test</th><th>Run 1 (patch, CI)</th><th>Run 2 (harness, local)</th></tr></thead><tbody>
+<tr><td><code>test_adversarial_same_cursor_insertions_converge</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_concurrent_delete_preserves_unobserved_insert</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_overlapping_deletes_undo_independently</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_deferred_operation_applies_after_dependency</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_duplicate_delivery_is_idempotent</code></td><td>PASS</td><td>PASS</td></tr>
+<tr><td><code>test_adversarial_three_same_cursor_insertions_all_orders_converge</code></td><td>not in patch</td><td>PASS</td></tr>
+</tbody></table>
+
+<h3>The sixth case, now executed</h3>
+<p>The permutation case was previously withdrawn: its first draft never compiled (<code>E0282</code>, type annotations needed), so it was never reported as a result. It is rewritten in <code>harness/tests/permutations.rs</code> and now runs.</p>
+<p>Three replicas each insert one character at the same offset of <code>"ab"</code>. All six delivery orders are tried on a fresh observer buffer. Every order must drain its deferred operations, satisfy <code>check_invariants()</code>, produce byte-identical text, and preserve each inserted character exactly once.</p>
+<div class="callout verified"><p><strong>RESULT: all six orders converge</strong> to the single string <code>"aCBAb"</code>. Convergence here is total, not statistical: the ordering is fixed by <code>Lamport::cmp</code>, which breaks ties on <code>replica_id</code> (<code>self.value.cmp(&amp;other.value).then_with(|| self.replica_id.cmp(&amp;other.replica_id))</code> in <code>crates/clock/src/clock.rs</code>). Concurrent inserts at one offset therefore sort by replica id, deterministically, on every peer.</p></div>
+<p>This is worth stating precisely, because it is easy to overclaim. The test proves convergence for this conflict shape under exhaustive delivery order. It does not prove convergence for arbitrary interleavings of deletes, undo, and redo at scale; that remains the schedule-fuzzer target below.</p>
+
+<h2 id="reproduce">10. Reproduction commands and source revision</h2>
+<p>All source links on this page are pinned to upstream commit <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code> (the revision inspected for this study). The focused test commands for the upstream suite, in a local checkout of that revision, are:</p>
+<pre>cargo test -p text test_random_edits
+cargo test -p text test_concurrent_edits
+cargo test -p text test_random_concurrent_edits
+cargo test -p text test_edit_partially_intersecting_a_deleted_fragment</pre>
+<p>The upstream suite was run in full by Run 1 above (<code>cargo test -p text</code>, 43 passed). The individual commands here select a single test each and are listed for targeted re-runs.</p>
+<div class="callout"><p><strong>NEXT RESEARCH TARGET</strong> - promote the permutation test into a deterministic schedule fuzzer: enumerate orders that preserve each replica's causal sequence, inject duplicates, and compare final text plus semantic invariants across replicas. The current exhaustive six-order case covers one conflict shape only.</p></div>
+</article>
+<aside class="toc"><strong>ON THIS PAGE</strong><a href="#thesis">Engineering question</a><a href="#invariants">check_invariants</a><a href="#local-tests">Local tests</a><a href="#convergence">Convergence</a><a href="#semantic-core">Remote semantics</a><a href="#adversarial">Adversarial matrix</a><a href="#known-regression">Existing regression</a><a href="#recommended">Work sequence</a><a href="#verdict">Evidence boundary</a><a href="#harness">Test harness</a><a href="#reproduce">Reproduction</a></aside></main>
+<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
+</body></html>
