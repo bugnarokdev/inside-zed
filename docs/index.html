@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="An independent, source-based technical exploration of Zed's Rust engine.">
+<title>Inside Zed - Under the hood</title><link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./architecture.html">Architecture</a><a href="./text-engine.html">Text engine</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<main>
+<section class="hero"><div class="wrap hero-grid"><div><div class="eyebrow">INDEPENDENT RUST ENGINEERING STUDY / 001</div><h1>UNDER THE<br>HOOD OF <span>ZED.</span></h1><p class="lede">A source-first exploration of the systems behind a modern Rust editor - from text storage primitives to collaborative editing and rendering.</p><div class="hero-meta"><span class="pill">RUST-FIRST</span><span class="pill">SOURCE-BASED</span><span class="pill">ENGINEERING NOTES</span><span class="pill">OPEN RESEARCH</span></div></div><aside class="hero-note"><strong>THE APPROACH</strong>Read the code. Trace the behavior. Identify the trade-offs. Measure before making performance claims.</aside></div></section>
+<section class="section"><div class="wrap"><div class="section-head"><div><div class="kicker">01 / SYSTEM MAP</div><h2>Inside the engine.</h2></div><p>Follow the implementation across subsystems, not just the surface API.</p></div>
+<div class="cards">
+<a class="card" href="./architecture.html"><span class="num">01 - SYSTEM</span><span class="arrow">↗</span><h3>Architecture map</h3><p>A first-pass map of the workspace layers and the main paths connecting them.</p><span class="status">FIRST PASS</span></a>
+<a class="card" href="./text-engine.html"><span class="num">02 - TEXT SYSTEM</span><span class="arrow">↗</span><h3>Text engine</h3><p>Buffers, snapshots, fragments, ropes, tree indexes, and the edit lifecycle.</p><span class="status">IN PROGRESS</span></a>
+<a class="card" href="./locator.html"><span class="num">03 - POSITIONING</span><span class="arrow">↗</span><h3>Locator deep dive</h3><p>Ordered identifiers, insertion between positions, depth, and adversarial patterns.</p><span class="status">INITIAL NOTES</span></a>
+<a class="card" href="https://github.com/zed-industries/zed/tree/main/crates/sum_tree" target="_blank" rel="noreferrer"><span class="num">04 - DATA STRUCTURE</span><span class="arrow">↗</span><h3>SumTree</h3><p>Aggregated summaries, multidimensional traversal, cursors, and copy-on-write behavior.</p><span class="status">SOURCE INVESTIGATION</span></a>
+</div></div></section>
+<section class="section"><div class="wrap"><div class="section-head"><div><div class="kicker">02 / EVIDENCE MODEL</div><h2>Facts over folklore.</h2></div><p>Every statement carries a clear level of confidence.</p></div>
+<div class="split"><div class="panel"><h3>Engineering, not guesswork.</h3><p>This project distinguishes what the source code proves from what an engineer can reasonably infer - and from questions that still need experiments. Benchmarks are workload-specific; implementation details are tied to upstream source.</p></div>
+<div class="panel evidence">
+<div class="evidence-row"><span class="tag verified">VERIFIED</span><p>Directly supported by inspected source code or tests.</p></div>
+<div class="evidence-row"><span class="tag analysis">ANALYSIS</span><p>An interpretation of observed implementation and likely consequences.</p></div>
+<div class="evidence-row"><span class="tag hypothesis">HYPOTHESIS</span><p>An open claim requiring more tracing, tests, or measurement.</p></div>
+</div></div></div></section>
+<section class="section"><div class="wrap"><div class="section-head"><div><div class="kicker">03 / RESEARCH PRINCIPLES</div><h2>Follow the real call path.</h2></div></div><div class="cards">
+<div class="card"><span class="num">A / SOURCE FIRST</span><h3>Implementation before interpretation.</h3><p>Use exact paths, symbols, tests, and revision context.</p></div>
+<div class="card"><span class="num">B / TRACE END TO END</span><h3>Connect the layers.</h3><p>Follow an operation from public API to mutation, storage, history, and synchronization.</p></div>
+<div class="card"><span class="num">C / MEASURE</span><h3>No performance theatre.</h3><p>Separate asymptotic reasoning from observed benchmark results.</p></div>
+<div class="card"><span class="num">D / STAY HONEST</span><h3>Expose what's unknown.</h3><p>Keep open questions visible and update conclusions when the code changes.</p></div>
+</div></div></section>
+<section class="section"><div class="wrap"><div class="split"><div><div class="kicker">UPSTREAM PROJECT</div><h2 style="font-size:28px;letter-spacing:-.04em">Zed Industries / Zed</h2><p style="color:var(--muted)">This is an independent engineering study. It is not affiliated with, endorsed by, or sponsored by Zed Industries.</p><p><a class="inline-link" href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Explore the upstream source ↗</a></p></div><div class="panel"><div class="kicker">RESEARCH REPOSITORY</div><h3>Open notebook. Living investigation.</h3><p>Documentation, source links, diagrams, questions, and future benchmark plans live in the GitHub repository.</p><p style="margin-top:17px"><a class="inline-link" href="https://github.com/bugnarokdev/inside-zed">Browse repository ↗</a></p></div></div></div></section>
+</main>
+<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span>RUST-FIRST / SOURCE-BASED / 2026</span></div></footer>
+</body></html>
