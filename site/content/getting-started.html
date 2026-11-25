@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="How to reproduce the figures on this site: pinned toolchain, sparse checkout, every command and what each one proves, and the boundaries of what this study covers.">
+<title>From zero to reproducing the numbers. · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="pagehead"><div class="wrap"><div class="crumb">FIELD GUIDE / 09 · REPRODUCTION</div><h1>From zero to reproducing the numbers.</h1><p>Every figure on this site comes from code that runs. This page is the single entry point for doing the same: what to install, which commands exist, what each one actually proves, and where the limits are. It assumes no prior knowledge of the repository and ends with the paths an expert will want.</p></div></div>
+<main class="wrap content"><article class="article">
+
+<div class="callout"><p><strong>SCOPE</strong> - this page documents the commands of <em>this study</em>, not the commands of the Zed editor. The pinned checkout contains thirteen engine crates, not the application: there is no keymap, no extension runtime and no settings UI in it. Anything about editing in Zed belongs to the upstream documentation, and nothing here is presented as if this repository had measured it.</p></div>
+
+<h2 id="five-minutes">Five minutes, one toolchain</h2>
+<p>The quickest real result needs a Rust toolchain and no network beyond the first build. The test suite is self-contained: it links against the vendored crates and asserts Zed's own invariants.</p>
+
+<pre># the version the pinned commit declares
+rustup toolchain install 1.100.0
+
+# all 33 tests
+cd harness
+cargo test --release</pre>
+
+<p>Expected tail, five suites:</p>
+
+<pre>tests/adversarial.rs       5 passed
+tests/concurrency.rs       8 passed
+tests/data_structures.rs  14 passed
+tests/permutations.rs      1 passed
+tests/ui_runtime.rs        5 passed</pre>
+
+<div class="callout verified"><p><strong>VERIFIED</strong> - measured on this checkout: 33 tests, 0 failures. The counts are the per-file totals cargo reports, not a rounded summary. <code>harness/rust-toolchain.toml</code> pins 1.100.0, so the toolchain line is not advisory: cargo switches to it inside <code>harness/</code> even when a different default is installed system-wide.</p></div>
+
+<h2 id="checkout">Getting the source the code links against</h2>
+<p>The harness does not reimplement Zed. Its dependencies are <code>path</code> dependencies into a checkout pinned at one exact commit, so the build fails until that checkout exists. One script creates it as a sparse, blob-filtered clone.</p>
+
+<pre># from the repository root
+./tools/setup-zed.sh</pre>
+
+<p>The script fetches only the crates the harness reaches, which is why the result is thirteen crates rather than the whole editor. It verifies the commit afterwards and refuses to continue if the checkout landed elsewhere.</p>
+
+<pre>zed checkout ready at 2664a0aa1eae5dabf8f8273c03f88d53061ca7dc
+crates present: clock collections gpui_util path rope scheduler
+                sum_tree text util util_macros zlog ztracing ztracing_macro</pre>
+
+<div class="callout"><p><strong>WHY SPARSE</strong> - a full Zed checkout is large and most of it is irrelevant to a text-engine study. The cone-mode sparse list is the honest dependency closure: <code>text</code> pulls <code>rope</code>, <code>collections</code> and <code>sum_tree</code>; its <code>test-support</code> feature pulls <code>util</code>, <code>path</code> and <code>util_macros</code>, which is what exposes <code>check_invariants()</code>.</p></div>
+
+<h2 id="commands">Every command, and what it proves</h2>
+<p>Four entry points exist. They answer different questions, and running all four is what the published figures rest on.</p>
+
+<div class="panels">
+<div class="panel"><h3>Tests. DETERMINISTIC.</h3><p><code>cargo test --release</code> inside <code>harness/</code> runs 33 assertions against the pinned crates. Proves the invariants hold and the concurrency rules behave as described. No timing involved, so any machine agrees.</p></div>
+<div class="panel"><h3>Measurements. TIMING.</h3><p><code>cargo run --release</code> runs the measurement harness: insert scaling, appends, offset lookup, undo grouping, rope geometry. Produces the timings quoted on the measurements page, which move between runs.</p></div>
+<div class="panel"><h3>Priority draw. STATISTICAL.</h3><p><code>cargo run --release --bin priority-draw</code> performs one million weighted draws over the real scheduler. Proves the 6:3:1 split and that a zero-weight priority is never selected. Fixed seed.</p></div>
+<div class="panel"><h3>Site build. DETERMINISTIC.</h3><p><code>python3 site/build.py</code> rebuilds the published pages from <code>site/</code>. Add <code>--check</code> to exit 1 on drift, which is what CI enforces.</p></div>
+</div>
+
+<p>The two runner commands differ only by target:</p>
+
+<pre>cd harness
+
+# the measurement harness
+cargo run --release
+
+# the priority draw
+cargo run --release --bin priority-draw</pre>
+
+<div class="callout verified"><p><strong>VERIFIED</strong> - run on this checkout, the draw prints 60.063% / 29.921% / 10.015% against 60/30/10 nominal, a maximum deviation of 0.079 points over one million draws, and reports that the zero-weight priority was selected 0 times in a separate 200 000-draw check. Fixed seed, so those exact numbers repeat.</p></div>
+
+<h2 id="reading">Reading a result instead of trusting it</h2>
+<p>The harness separates two kinds of output, and conflating them is the usual mistake.</p>
+
+<div class="panels">
+<div class="panel"><h3>Structural figures.</h3><p>Chunk count, chunk size, tree shape, byte offsets, checksums. These reproduce bit-for-bit on any machine, so a disagreement means a real difference in the code or the input, never noise.</p></div>
+<div class="panel"><h3>Timing figures.</h3><p>Medians in nanoseconds. These move between runs and between machines. The published pages report a spread or per-run values, never one authoritative number.</p></div>
+</div>
+
+<div class="callout"><p><strong>REPRODUCIBILITY</strong> - the raw output of every published run is committed under <code>harness/results/</code>. If a fresh run disagrees with a page, the raw file is the reference and the page is what needs correcting. That rule is deliberate: it keeps the written claims subordinate to the artifact.</p></div>
+
+<h2 id="targeted">Re-running one thing</h2>
+<p>Once the suite is green, the useful move is to narrow it. Each test binary takes a filter, and the upstream suite can be run directly when the pinned crates are present.</p>
+
+<pre>cd harness
+
+# one suite
+cargo test --release --test adversarial
+
+# one test, with its assertion output
+cargo test --release --test concurrency -- --nocapture
+
+# the upstream text suite the pinned checkout ships
+cargo test --release -p text</pre>
+
+<p>Without <code>--nocapture</code>, cargo swallows the output of passing tests and a failure shows only a summary line.</p>
+
+<h2 id="expert">The expert paths</h2>
+<p>Three checks are worth knowing before changing anything, because each one silently changes what a result means.</p>
+
+<pre># confirm which toolchain is really active inside harness/
+cd harness &amp;&amp; cargo --version &amp;&amp; rustc --version
+
+# confirm the checkout is exactly the pin
+git -C vendor/zed rev-parse HEAD
+
+# confirm the published site matches its sources
+python3 site/build.py --check</pre>
+
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - the first command is the one that catches a machine-specific failure. A default toolchain elsewhere on the system does not matter: inside <code>harness/</code>, <code>rust-toolchain.toml</code> wins and cargo reports 1.100.0. If it reports anything else, the pin is not being honoured and every timing is suspect.</p></div>
+
+<p>Changing the pin is a deliberate act, not a routine bump. <code>ZED_PIN</code> lives in <code>tools/setup-zed.sh</code> and the same hash appears throughout this site, so a new pin means a new checkout, a re-run of all four commands, and updated results files. Anything less publishes numbers attributed to a revision that did not produce them.</p>
+
+<div class="callout hypothesis"><p><strong>HYPOTHESIS</strong> - timing medians have so far been compared only across runs on similar hardware. Whether the spread on the noisiest section is dominated by machine load or by allocator behaviour is not established by the current runs, and would need a controlled A/B on one host to settle.</p></div>
+
+<h2 id="boundaries">What this page does not cover</h2>
+<p>Stated plainly, because the gap between this project and Zed is where a reader gets misled.</p>
+
+<div class="note">
+<p><strong>NOT DOCUMENTED HERE</strong></p>
+<p>Installing the Zed editor, keyboard shortcuts and keymaps, themes, settings, extensions and plugins, language servers, collaboration setup, and any editor-level workflow. None of those live in the pinned checkout this study builds against, so none of them are described here. The absence is a boundary, not an oversight.</p>
+</div>
+
+<p>The study covers the engine: <code>text</code>, <code>rope</code>, <code>sum_tree</code>, <code>clock</code> and <code>scheduler</code>. Each has its own page tracing the real implementation and the tests that exercise it, starting with the architecture map.</p>
+
+</article></main>
+</body></html>

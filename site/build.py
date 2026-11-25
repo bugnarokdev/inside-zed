@@ -28,7 +28,7 @@ DOCS = ROOT / "docs"
 
 # Sidebar structure in reading order. A page must exist to be linked.
 NAV: list[tuple[str, list[str]]] = [
-    ("Get started", ["index"]),
+    ("Get started", ["index", "getting-started"]),
     ("The engine", ["architecture", "text-engine", "text-engine#rope", "edit-lifecycle", "locator"]),
     ("Collaboration", ["collaboration-lab"]),
     ("Evidence", ["invariants-and-adversarial-testing", "measurements", "runtime"]),
@@ -37,6 +37,7 @@ NAV: list[tuple[str, list[str]]] = [
 # slug -> (english label, one-line english description for the landing grid)
 PAGE_META: dict[str, tuple[str, str]] = {
     "index": ("Overview", ""),
+    "getting-started": ("Reproduction", "Commands, toolchain, and how to verify the numbers."),
     "architecture": ("Architecture", "How the crates fit together."),
     "text-engine": ("Text engine", "Ropes, sums, coordinates."),
     "edit-lifecycle": ("Edit lifecycle", "From keystroke to transaction."),

@@ -21,6 +21,8 @@ scheduler = { path = "../vendor/zed/crates/scheduler", features = ["test-support
 
 [dev-dependencies]
 # test-support exposes Buffer::check_invariants(), Zed's own internal
-# consistency checker. It pulls in util/path, which is why the pinned
-# checkout needs those crates present and why a nightly toolchain is required.
+# consistency checker. It pulls in util/path/util_macros, which is the real
+# reason the pinned checkout needs those crates present. No nightly toolchain
+# is involved: harness/rust-toolchain.toml pins stable 1.100.0, the version the
+# upstream commit declares.
 text = { path = "../vendor/zed/crates/text", features = ["test-support"] }

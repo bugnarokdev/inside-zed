@@ -16,6 +16,7 @@ An independent, source-based exploration of [Zed](https://github.com/zed-industr
 
 | Investigation | Focus | Status |
 |---|---|---|
+| [From zero to the numbers](docs/getting-started.html) | Pinned toolchain, sparse checkout, every command and what each one proves, and the boundaries of the study | Entry point |
 | [Architecture map](docs/architecture.html) | Workspace layers and major subsystems | First pass |
 | [Text engine](docs/text-engine.html) | Buffer, snapshots, fragments, history, and storage | In progress |
 | [Edit lifecycle](docs/edit-lifecycle.html) | End-to-end trace: operations, fragments, anchors, undo, and remote replay | Deep dive |
