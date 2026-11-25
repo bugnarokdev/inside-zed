@@ -204,6 +204,9 @@ fn test_concurrent_delete_preserves_unobserved_insert() {
 <tr><td><code>test_adversarial_duplicate_delivery_is_idempotent</code></td><td>PASS</td></tr>
 </tbody></table>
 <p><a href="https://github.com/bugnarokdev/inside-zed/actions/runs/45544928667" target="_blank" rel="noreferrer">Open successful CI run and raw test logs ↗</a></p>
+<h3>Next escalation: delivery-order permutations</h3>
+<p>The first green run validates five targeted cases. A sixth experiment is now added to the isolated patch: three concurrent insertions at the same cursor, delivered in all six possible orders to fresh replicas. It compares the resulting text and checks invariants for every permutation. This second run is queued separately, so the five-test green result remains preserved as an immutable baseline.</p>
+<p><a href="https://github.com/bugnarokdev/inside-zed/actions/runs/45545779475" target="_blank" rel="noreferrer">Run six-test permutation experiment ↗</a></p>
 
 <h2 id="reproduce">9. Reproduction commands and source revision</h2>
 <p>All source links on this page are pinned to upstream commit <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code> (the revision inspected for this study). In a local checkout of that revision, the focused test commands are:</p>
