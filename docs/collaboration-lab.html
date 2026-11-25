@@ -69,14 +69,47 @@ Replica C  →  a12c34e56</pre>
 </ul>
 <p>Source: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/tests.rs#L913-L991" target="_blank" rel="noreferrer">test_random_concurrent_edits ↗</a>. This is randomized test coverage, not a proof over every possible operation schedule.</p>
 
-<h2 id="limits">7. What this test does not settle</h2>
-<div class="callout hypothesis"><p><strong>OPEN QUESTION</strong> - the deterministic example edits three disjoint ranges. It does not establish the expected result when two replicas concurrently insert at the exact same cursor, replace the exact same range, or delete overlapping text.</p></div>
-<p>Nor should one infer a formal CRDT guarantee from these tests alone. The implementation and tests provide evidence of convergence for the exercised schedules; a universal guarantee would require a broader specification and proof than this walkthrough supplies.</p>
+<h2 id="limits">7. What the deterministic test does not settle</h2>
+<p>The three-replica test changes disjoint ranges. It proves convergence for that checked-in scenario, but it does not specify same-cursor insertion, same-range replacement, or overlapping deletion behavior.</p>
+<div class="callout hypothesis"><p><strong>OPEN QUESTION</strong> - those cases need targeted assertions. The implementation contains an explicit ordering rule for concurrent insertions, which we can trace next, but a source-derived prediction is not a substitute for a regression test.</p></div>
+<p>Nor should one infer a formal CRDT guarantee from these tests alone. The implementation and tests provide evidence for the exercised schedules; a universal guarantee would require a broader specification and proof than this walkthrough supplies.</p>
 
-<h2 id="next">8. The next experiment</h2>
-<p>The highest-value follow-up is a conflict matrix with tiny reproducible cases:</p>
+<h2 id="same-cursor">8. Same-cursor insertion: derive the order</h2>
+<p>Consider two fresh replicas that both start from <code>ab</code>. Before receiving any remote operation, A inserts <code>X</code> at byte offset 1 and B inserts <code>Y</code> at that exact same position.</p>
+<div class="panel">
+<div class="kicker">LOCAL STATES BEFORE SYNC</div>
+<pre>Replica A (ID 1):  aXb
+Replica B (ID 2):  aYb</pre>
+<p>With non-empty base text, the constructor seeds the base fragment with a local Lamport timestamp and advances each replica's clock past it. The first local edit therefore gets the same sequence value on both replicas; the replica ID breaks the tie. In this example the timestamps are <code>(value 2, replica 1)</code> and <code>(value 2, replica 2)</code>.</p>
+</div>
+<p>The ordering code is unusually explicit:</p>
+<ul>
+<li><code>Lamport::cmp</code> compares the sequence value first, then the replica ID. So <code>(2, 2)</code> sorts higher than <code>(2, 1)</code>.</li>
+<li>During remote replay, <code>apply_remote_edit</code> skips over a concurrent insertion at the same versioned offset when that fragment has a higher Lamport timestamp.</li>
+<li>The incoming text is then inserted before the remaining fragments in the target range.</li>
+</ul>
+<p>Sources: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/clock/src/clock.rs#L214-L258" target="_blank" rel="noreferrer">Lamport ordering and ticking ↗</a>, <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L747-L772" target="_blank" rel="noreferrer">buffer clock initialization ↗</a>, and <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L1027-L1079" target="_blank" rel="noreferrer">concurrent insertion handling ↗</a>.</p>
+<div class="callout analysis"><p><strong>SOURCE-DERIVED PREDICTION</strong> - for these two first edits, the code implies that the higher timestamp is placed first. A receiving B's operation, A inserts <code>Y</code> before its existing <code>X</code>; B receiving A's operation preserves its higher-timestamp <code>Y</code> before inserting <code>X</code>. Both should therefore end at <code>aYXb</code>, independent of which remote operation is applied at the other replica.</p></div>
+<p>The following small test would turn that deduction into an executable assertion inside Zed's <code>crates/text/src/tests.rs</code>. It is a proposed test, not a test already present in upstream:</p>
+<pre>#[test]
+fn test_concurrent_insertions_at_same_cursor() {
+    let mut a = Buffer::new(ReplicaId::new(1), BufferId::new(1).unwrap(), "ab");
+    let mut b = Buffer::new(ReplicaId::new(2), BufferId::new(1).unwrap(), "ab");
+
+    let op_a = a.edit([(1..1, "X")]);
+    let op_b = b.edit([(1..1, "Y")]);
+
+    a.apply_op(op_b);
+    b.apply_op(op_a);
+
+    assert_eq!(a.text(), "aYXb");
+    assert_eq!(b.text(), "aYXb");
+}</pre>
+<div class="callout hypothesis"><p><strong>NOT YET EXECUTED</strong> - the predicted result follows from the inspected branches and timestamp comparison. Running this test against the pinned upstream revision is the next verification step.</p></div>
+
+<h2 id="next">9. The next conflict experiments</h2>
+<p>After adding and running the same-cursor test, the remaining high-value cases are:</p>
 <ol>
-<li><strong>Same-cursor insertion:</strong> A inserts <code>X</code> and B inserts <code>Y</code> at the same position before either receives the other's operation.</li>
 <li><strong>Same-range replacement:</strong> A and B replace the same original characters with different strings.</li>
 <li><strong>Delete versus insert:</strong> A deletes a range while B inserts inside that range from the same starting version.</li>
 <li><strong>Undo after remote change:</strong> A undoes its own edit after receiving B's concurrent operation.</li>
