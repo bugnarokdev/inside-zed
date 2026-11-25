@@ -188,6 +188,15 @@ fn test_concurrent_delete_preserves_unobserved_insert() {
 </div>
 <p>This is the evidence boundary. It neither dismisses the implementation nor claims more than the inspected tests show.</p>
 
+<h2 id="harness">10. Experimental test harness</h2>
+<p>The five deterministic test cases in the matrix have been prepared as a separate patch. The patch is applied in CI to a clean checkout of the pinned upstream revision, then the full <code>text</code> crate test suite is invoked. No source file in the upstream repository is committed or changed by this research project.</p>
+<ul>
+<li><a href="https://github.com/bugnarokdev/inside-zed/blob/research/adversarial-tests-ci/research/patches/text-adversarial-tests.patch" target="_blank" rel="noreferrer">Adversarial Rust test patch ↗</a></li>
+<li><a href="https://github.com/bugnarokdev/inside-zed/blob/research/adversarial-tests-ci/.github/workflows/zed-text-adversarial.yml" target="_blank" rel="noreferrer">CI workflow ↗</a></li>
+<li><a href="https://github.com/bugnarokdev/inside-zed/actions/runs/45544928667" target="_blank" rel="noreferrer">Current CI run ↗</a></li>
+</ul>
+<div class="callout hypothesis"><p><strong>RUN STATUS</strong> - the patch application and Linux dependency installation have passed. The full <code>cargo test -p text</code> step is still running. No test result is recorded until that job completes.</p></div>
+
 <h2 id="reproduce">9. Reproduction commands and source revision</h2>
 <p>All source links on this page are pinned to upstream commit <code>2664a0aa1eae5dabf8f8273c03f88d53061ca7dc</code> (the revision inspected for this study). In a local checkout of that revision, the focused test commands are:</p>
 <pre>cargo test -p text test_random_edits
