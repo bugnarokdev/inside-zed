@@ -85,6 +85,25 @@
 </div>
 <p>The receiver's causal gate is also important. <code>apply_ops</code> queues operations whose captured version has not yet been observed. <code>flush_deferred_ops</code> retries them after new operations arrive, while <code>deferred_replicas</code> prevents a later operation from the same replica from jumping ahead of an earlier deferred one. An operation already observed by the local version is not applied again.</p>
 <p>Sources: <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L909-L955" target="_blank" rel="noreferrer">apply_ops / apply_op ↗</a> and <a href="https://github.com/zed-industries/zed/blob/2664a0aa1eae5dabf8f8273c03f88d53061ca7dc/crates/text/src/text.rs#L1276-L1299" target="_blank" rel="noreferrer">deferred queue and causal readiness ↗</a>.</p>
+<p>A minimal dependency-gap test can make the deferral contract explicit: create two sequential operations on one sender, deliver the second first, and then deliver its prerequisite.</p>
+<pre>#[test]
+fn test_deferred_operation_applies_after_its_dependency() {
+    let buffer_id = BufferId::new(1).unwrap();
+    let mut sender = Buffer::new(ReplicaId::new(1), buffer_id, "ab");
+    let mut receiver = Buffer::new(ReplicaId::new(2), buffer_id, "ab");
+
+    let first = sender.edit([(1..1, "X")]);
+    let second = sender.edit([(2..2, "Y")]);
+
+    receiver.apply_ops([second]);
+    assert!(receiver.has_deferred_ops());
+
+    receiver.apply_ops([first]);
+    assert!(!receiver.has_deferred_ops());
+    assert_eq!(receiver.text(), "aXYb");
+    receiver.check_invariants();
+}</pre>
+<p>This exercises the actual dependency gap and the retry path rather than relying on the random simulator to happen to produce it. This proposal is also not yet run.</p>
 
 <h3>What the simulator does not model</h3>
 <p>This is a strong unit-level delivery simulator, not a distributed-systems deployment test. It has in-memory inboxes and eventual delivery. It does not simulate process restarts, durable log recovery, server persistence, authentication/session changes, real transport framing, or permanent message loss. Its random schedules provide sampling, not exhaustive enumeration of every legal schedule.</p>
@@ -115,6 +134,31 @@
 <h3>Why the delete/insert case matters</h3>
 <p>Use base text <code>abcdef</code>. A deletes <code>cde</code> (<code>2..5</code>) while B inserts <code>X</code> between <code>c</code> and <code>d</code> (<code>3..3</code>), with both operations created from the original version. The expected visible result after full synchronization is <code>abXf</code>: the insertion is concurrent text, not part of the characters A observed and deleted.</p>
 <p>That expectation follows from the observed-version check in remote deletion handling, but it should still be converted into an upstream test with both delivery orders and invariant checks. The test should also capture the anchor position around the insertion point before either operation.</p>
+<p>The following is a concrete test proposal for <code>crates/text/src/tests.rs</code>. It checks both peer perspectives and two different delivery orders on fresh replicas. It has been derived from the inspected APIs and semantics; it has not been compiled or run.</p>
+<pre>#[test]
+fn test_concurrent_delete_preserves_unobserved_insert() {
+    let buffer_id = BufferId::new(1).unwrap();
+    let mut a = Buffer::new(ReplicaId::new(1), buffer_id, "abcdef");
+    let mut b = Buffer::new(ReplicaId::new(2), buffer_id, "abcdef");
+
+    let delete = a.edit([(2..5, "")]);
+    let insert = b.edit([(3..3, "X")]);
+
+    // Each author receives the other author's concurrent operation.
+    a.apply_ops([insert.clone()]);
+    b.apply_ops([delete.clone()]);
+
+    // Two fresh replicas receive the same operations in opposite orders.
+    let mut c = Buffer::new(ReplicaId::new(3), buffer_id, "abcdef");
+    c.apply_ops([delete.clone(), insert.clone()]);
+    let mut d = Buffer::new(ReplicaId::new(4), buffer_id, "abcdef");
+    d.apply_ops([insert, delete]);
+
+    for buffer in [&a, &b, &c, &d] {
+        assert_eq!(buffer.text(), "abXf");
+        buffer.check_invariants();
+    }
+}</pre>
 
 <h3>Why overlapping deletes plus undo matters</h3>
 <p>From <code>abcdef</code>, A deletes <code>bcd</code> and B deletes <code>cde</code>, both based on the same starting state. After both operations converge, the visible text should be <code>af</code>. Undoing only A's deletion should restore <code>b</code>, but not <code>cde</code>, because B's deletion still applies to those characters: the intermediate result should be <code>abf</code>. Undoing B as well should restore <code>abcdef</code>.</p>
