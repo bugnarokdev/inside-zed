@@ -309,9 +309,6 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
   .toc{display:none}
 }
 @media (max-width:900px){
-  /* display:contents removes the rail box so the menu falls back to its own
-     fixed drawer; hiding the rail outright would hide the menu with it. */
-  .rail{display:contents}
   .shell{padding-left:0;grid-template-columns:1fr}
   .sidebar{position:fixed;inset:56px 0 0 0;height:auto;max-height:none;width:auto;
     background:var(--bg);z-index:35;
