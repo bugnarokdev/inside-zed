@@ -14,6 +14,10 @@ text = { path = "../vendor/zed/crates/text" }
 rope = { path = "../vendor/zed/crates/rope" }
 clock = { path = "../vendor/zed/crates/clock" }
 sum_tree = { path = "../vendor/zed/crates/sum_tree" }
+# The real UI-runtime scheduler crate: Priority, the weighted queue, the
+# deterministic TestScheduler. Used to test the runtime's fairness rules
+# instead of describing them.
+scheduler = { path = "../vendor/zed/crates/scheduler", features = ["test-support"] }
 
 [dev-dependencies]
 # test-support exposes Buffer::check_invariants(), Zed's own internal

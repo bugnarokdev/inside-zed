@@ -22,33 +22,39 @@ An independent, source-based exploration of [Zed](https://github.com/zed-industr
 | [Collaboration lab](docs/collaboration-lab.html) | Three replicas, divergent delivery orders, deferred operations, and convergence tests | Test trace |
 | [Invariants & adversarial testing](docs/invariants-and-adversarial-testing.html) | Audit of structural checks, randomized convergence, known regressions, and the executed adversarial matrix | Engineering audit, 6 tests executed |
 | [Measured, not guessed](docs/measurements.html) | Insert latency vs document size, offset lookup cost, undo grouping, and rope chunk geometry | Real run, raw output committed |
+| [UI runtime & concurrency](docs/runtime.html) | The `!Send` local executor, weighted priority fairness, and Lamport ordering across replicas | Engineering audit, 13 tests executed |
 | [Locator deep dive](docs/locator.html) | Stable ordering positions and insertion patterns | Initial notes |
 | SumTree | Aggregated summaries, dimensions, cursors, and mutation | In progress |
 | Rope | Chunk storage, bitmap indexes, and coordinate conversion | In progress |
-| GPUI | Rendering, layout, events, and platform integration | To investigate |
+| GPUI | Rendering, layout, events, and platform integration | Partly covered by the runtime audit |
 
 **[Open the Inside Zed research site →](https://bugnarokdev.github.io/inside-zed/)**
 
 ## Executed evidence
 
-This repository does not only read Zed's source - it runs it. Two artefacts back the claims on the site:
+This repository does not only read Zed's source - it runs it. Three artefacts back the claims on the site:
 
-**1. Six adversarial concurrency tests** (`harness/tests/`) executed against the real `text` crate, each asserting Zed's own `Buffer::check_invariants()`. Includes the permutation case: three insertions at one cursor delivered in all six orders, converging to `"aCBAb"`, with tie-breaking traced to `Lamport::cmp` in `crates/clock/src/clock.rs`.
+**1. Adversarial concurrency tests** (`harness/tests/adversarial.rs`, `permutations.rs`) executed against the real `text` crate, each asserting Zed's own `Buffer::check_invariants()`. Includes the permutation case: three insertions at one cursor delivered in all six orders, converging to `"aCBAb"`, with tie-breaking traced to `Lamport::cmp` in `crates/clock/src/clock.rs`.
 
-**2. A measurement harness** (`harness/src/main.rs`) linked against the pinned source, producing the latencies published on the site. Raw output of all three runs is committed at `harness/results/release-run.txt`, `release-run-2.txt`, and `release-run-3.txt`; the published figures show the spread between them rather than a single value.
+**2. Runtime tests** (`harness/tests/concurrency.rs`, `ui_runtime.rs`) against the `clock` and `scheduler` crates. The `clock` crate has no upstream tests of its own, so its ordering and version-vector semantics are covered here. The `scheduler` tests pin `Priority::weight()`, the deterministic `TestScheduler`, and the `Send`/`!Send` executor boundary.
+
+**3. Two measurement harnesses**: `harness/src/main.rs` linked against the pinned source produces the latencies published on the site (raw output of all three runs committed at `harness/results/release-run*.txt`), and `harness/src/bin/priority-draw.rs` measures the weighted priority draw against the real weights (output at `harness/results/priority-draw.txt`).
+
+Totals: **19 tests, 19 passing**, plus the fairness measurement. Raw suite output is committed at `harness/results/suite-run.txt`.
 
 ### Reproducing
 
 ```sh
 ./tools/setup-zed.sh            # sparse, blob-filtered checkout of the pin
-cd harness && cargo test --release          # 6 tests
+cd harness && cargo test --release          # 19 tests
+cd harness && cargo run --release --bin priority-draw   # fairness measurement
 cd harness && cargo build --release \
   && ./target/release/inside-zed-harness    # measurements
 ```
 
-Requires network access to GitHub. Uses Rust 1.100.0, the same toolchain the pinned upstream commit declares in its own `rust-toolchain.toml`: `harness/rust-toolchain.toml` pins it, and all six tests build and pass on it with no nightly features required.
+Requires network access to GitHub. Uses Rust 1.100.0, the same toolchain the pinned upstream commit declares in its own `rust-toolchain.toml`: `harness/rust-toolchain.toml` pins it, and all 19 tests build and pass on it with no nightly features required.
 
-Everything is pinned to upstream `2664a0aa1eae5dabf8f8273c03f88d53061ca7dc`. Nothing in the upstream tree is modified: the harness links Zed's crates by path, and the CI job applies a patch to a throwaway checkout.
+Everything is pinned to upstream `2664a0aa1eae5dabf8f8273c03f88d53061ca7dc`. Nothing in the upstream tree is modified: the harness links Zed's crates by path from a git-ignored `vendor/zed` checkout, and `.github/workflows/harness.yml` re-materialises that checkout on every run.
 
 ## Evidence standard
 

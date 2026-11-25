@@ -28,6 +28,7 @@ SPARSE_DIRS=(
   crates/util_macros
   crates/zlog
   crates/path
+  crates/scheduler
   tooling/perf
 )
 

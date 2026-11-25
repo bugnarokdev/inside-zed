@@ -1,0 +1,84 @@
+name: harness
+
+# Runs the research harness against a fresh checkout of the pinned upstream
+# revision, so every figure published on the site is backed by a build that a
+# third party can reproduce without trusting this repository's word.
+#
+# The repository does not vendor Zed: vendor/zed is git-ignored and is
+# materialised by tools/setup-zed.sh, which is what this job calls.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "harness/**"
+      - "tools/setup-zed.sh"
+      - ".github/workflows/harness.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "harness/**"
+      - "tools/setup-zed.sh"
+      - ".github/workflows/harness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests on rust 1.100.0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Checkout research repository
+        uses: actions/checkout@v4
+
+      - name: Materialise pinned Zed crates
+        run: ./tools/setup-zed.sh
+
+      - name: Show pinned revision
+        run: git -C vendor/zed rev-parse HEAD
+
+      # rust-toolchain.toml in harness/ pins 1.100.0, the toolchain the pinned
+      # upstream commit declares. rustup honours it automatically.
+      - name: Show toolchain
+        working-directory: harness
+        run: rustc --version && cargo --version
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            harness/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('harness/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Run the full harness suite
+        working-directory: harness
+        run: cargo test --release -- --nocapture
+
+      # The fairness measurement is published on the site, so it is checked
+      # here rather than described. The binary reads Priority::weight() out of
+      # the real scheduler crate; this step fails if it stops building.
+      - name: Measure the priority draw
+        working-directory: harness
+        run: cargo run --release --bin priority-draw
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-results
+          path: |
+            harness/results/*.txt
+          if-no-files-found: warn

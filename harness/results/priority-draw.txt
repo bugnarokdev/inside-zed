@@ -1,0 +1,20 @@
+priority weights, read from crates/scheduler
+priority          weight    nominal %
+High                  60       60.00%
+Medium                30       30.00%
+Low                   10       10.00%
+RealtimeAudio          0        0.00%
+sum                  100
+
+note: RealtimeAudio carries weight 0 and is excluded from the draw;
+its nominal share is therefore 0, not the 100/4 split.
+
+measured shares over 1000000 draws (xorshift64*, fixed seed)
+priority               count measured %    nominal %
+High                  600635    60.063%          60%
+Medium                299210    29.921%          30%
+Low                   100155    10.015%          10%
+
+max absolute deviation from nominal: 0.079 points
+
+RealtimeAudio selected 0 times in 200000 draws while competing against High and Low
