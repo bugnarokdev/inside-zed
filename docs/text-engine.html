@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d12">
+<meta name="description" content="A first-pass source study of buffers, snapshots, rope storage, stable positions, operation queues, and undo history.">
+<title>Text engine · Inside Zed</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./index.html">Overview</a><a href="./architecture.html">Architecture</a><a href="./text-engine.html">Text engine</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<div class="pagehead"><div class="wrap"><div class="crumb">ENGINE ROOM / 02</div><h1>The text engine.</h1><p>A first-pass source study of buffers, snapshots, rope storage, stable positions, operation queues, and undo history.</p></div></div>
+<main class="wrap content"><article class="article">
+<h2 id="buffer">1. Buffer and snapshot model</h2>
+<p>The text subsystem's <code>Buffer</code> and <code>BufferSnapshot</code> live in <a href="https://github.com/zed-industries/zed/blob/main/crates/text/src/text.rs"><code>crates/text/src/text.rs</code></a>.</p>
+<p>The inspected <code>Buffer</code> structure carries state for a snapshot, history, deferred operations, replica tracking, a Lamport clock, subscriptions, and version waiters. The inspected <code>BufferSnapshot</code> includes <code>visible_text</code>, <code>deleted_text</code>, fragment and insertion indexes, an undo map, version information, replica/buffer identifiers, and line-ending metadata.</p>
+<div class="callout"><p><strong>VERIFIED</strong> - the snapshot is not just a wrapper around one mutable string. The inspected structure keeps visible and deleted text separately and carries fragment/operation-related indexes.</p></div>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - this shape is consistent with a model that preserves edit identity and deletion state alongside the currently visible text. It provides data structures that can participate in history and synchronization.</p></div>
+<h2 id="rope">2. Rope and SumTree</h2>
+<p><a href="https://github.com/zed-industries/zed/blob/main/crates/rope/src/rope.rs"><code>crates/rope/src/rope.rs</code></a> defines <code>Rope</code> over a <code>SumTree&lt;Chunk&gt;</code>. Chunk implementation is in <a href="https://github.com/zed-industries/zed/blob/main/crates/rope/src/chunk.rs"><code>crates/rope/src/chunk.rs</code></a>.</p>
+<p>The inspected chunk structure stores text alongside bitmap indexes for character boundaries, UTF-16 units, newlines, and tabs.</p>
+<div class="callout"><p><strong>VERIFIED</strong> - the rope uses a summary-indexed tree of chunks, and each chunk maintains coordinate-related metadata.</p></div>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - this arrangement is designed to accelerate conversions between byte offsets, character/UTF-16 positions, and row/column coordinates. Actual complexity and performance depend on the exact seek and update paths.</p></div>
+<h2 id="locator">3. Locator and stable ordering</h2>
+<p>The locator implementation is in <a href="https://github.com/zed-industries/zed/blob/main/crates/text/src/locator.rs"><code>crates/text/src/locator.rs</code></a>. The inspected <code>Locator</code> is backed by a small vector of integer components. Its <code>between(lhs, rhs)</code> operation constructs an ordered identifier between existing positions.</p>
+<p>Tests exercise large sequential append patterns and repeated insertion at a cursor. These scenarios are useful evidence about intended workloads, not a universal complexity guarantee.</p>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - stable position identifiers can avoid renumbering all subsequent items after an insertion. The existing tests suggest common typing patterns are an optimization target.</p></div>
+<h2 id="operations">4. Operation queue</h2>
+<p>The queue implementation is in <a href="https://github.com/zed-industries/zed/blob/main/crates/text/src/operation_queue.rs"><code>crates/text/src/operation_queue.rs</code></a>. The inspected insertion path sorts operations by Lamport timestamp, deduplicates matching timestamps, and inserts the result into its tree-backed structure.</p>
+<p>The semantic guarantees around duplicate identity, causal readiness, and interaction with replicas require following the operation application code.</p>
+<h2 id="history">5. History and undo</h2>
+<p>History lives in <a href="https://github.com/zed-industries/zed/blob/main/crates/text/src/history.rs"><code>crates/text/src/history.rs</code></a>; undo state is represented in <a href="https://github.com/zed-industries/zed/blob/main/crates/text/src/undo_map.rs"><code>crates/text/src/undo_map.rs</code></a>.</p>
+<p>The inspected history structure includes a base rope, an operation map, undo/redo stacks, transaction depth, and a grouping interval. The undo map tracks edit/undo identifiers and an undo count.</p>
+<div class="callout analysis"><p><strong>ANALYSIS</strong> - undo is integrated with operation identity rather than being only a stack of string reversals. Its behavior in the presence of concurrent replicas still needs explicit tracing.</p></div>
+<h2 id="next">6. The next end-to-end trace</h2>
+<ol><li>Find the public buffer edit API and trace its callers.</li><li>Follow fragment creation and insertion.</li><li>Trace operation construction and timestamp assignment.</li><li>Inspect snapshot and tree updates.</li><li>Follow visible/deleted text derivation.</li><li>Trace history and undo bookkeeping.</li><li>Follow remote propagation, deferral, and replay.</li><li>Inspect anchor resolution and convergence tests.</li></ol>
+<div class="callout hypothesis"><p><strong>OPEN HYPOTHESIS</strong> - the precise convergence guarantees should not be labelled CRDT behavior until the operation semantics, replica merge path, and relevant tests have been inspected together.</p></div>
+<h2 id="evidence">Evidence vocabulary</h2>
+<ul><li><strong>Verified:</strong> directly supported by the inspected implementation or tests.</li><li><strong>Analysis:</strong> interpretation of the observed implementation.</li><li><strong>Hypothesis:</strong> unresolved claim that needs more inspection or measurement.</li></ul></article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#buffer">Buffer & snapshot</a><a href="#rope">Rope & SumTree</a><a href="#locator">Locator</a><a href="#operations">Operation queue</a><a href="#history">History & undo</a><a href="#next">Next trace</a><a href="#evidence">Evidence model</a></aside></main>
+<footer class="footer"><div class="wrap"><span>INSIDE ZED · INDEPENDENT ENGINEERING RESEARCH</span><span><a href="https://github.com/bugnarokdev/inside-zed">SOURCE REPOSITORY ↗</a></span></div></footer>
+</body></html>
