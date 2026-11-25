@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./runtime.html">Runtime</a><a href="./measurements.html">Measurements</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
+<header class="topbar"><div class="wrap nav"><a class="brand" href="./index.html">INSIDE<b>_</b>ZED</a><nav class="navlinks"><a href="./text-engine.html">Text engine</a><a href="./edit-lifecycle.html">Edit lifecycle</a><a href="./invariants-and-adversarial-testing.html">Audit</a><a href="./measurements.html">Measurements</a><a href="./runtime.html">Runtime</a><a href="https://github.com/zed-industries/zed" target="_blank" rel="noreferrer">Upstream ↗</a></nav></div></header>
 <div class="pagehead"><div class="wrap"><div class="crumb">FIELD GUIDE / 05 · RUNTIME</div><h1>One thread owns the state. The compiler knows.</h1><p>Zed's UI runtime keeps an <code>Rc</code>/<code>RefCell</code> object graph alive across asynchronous work. That is only sound because the executor holding it is <code>!Send</code>, the priority queue is a weighted draw that renormalises over non-empty queues, and cross-replica ordering is a Lamport timestamp over a four-slot inline version vector. Each claim below is traced to a line of the pinned checkout, and the concurrency and fairness rules are covered by executed tests.</p></div></div>
 <main class="wrap content"><article class="article">
 
