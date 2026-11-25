@@ -35,7 +35,7 @@ This repository does not only read Zed's source - it runs it. Two artefacts back
 
 **1. Six adversarial concurrency tests** (`harness/tests/`) executed against the real `text` crate, each asserting Zed's own `Buffer::check_invariants()`. Includes the permutation case: three insertions at one cursor delivered in all six orders, converging to `"aCBAb"`, with tie-breaking traced to `Lamport::cmp` in `crates/clock/src/clock.rs`.
 
-**2. A measurement harness** (`harness/src/main.rs`) linked against the pinned source, producing the latencies published on the site. Raw run output is committed at `harness/results/release-run.txt`.
+**2. A measurement harness** (`harness/src/main.rs`) linked against the pinned source, producing the latencies published on the site. Raw output of all three runs is committed at `harness/results/release-run.txt`, `release-run-2.txt`, and `release-run-3.txt`; the published figures show the spread between them rather than a single value.
 
 ### Reproducing
 

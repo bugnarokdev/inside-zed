@@ -1,0 +1,39 @@
+zed text engine harness
+source: crates persistently checked out at 2664a0aa1e
+
+== A. edit() at offset 0 vs document size (25 reps, fresh buffer) ==
+   lines     median_us        min_us      ns_MB_edit
+    1000          6.32          6.19      195575.358
+   10000         15.30         13.37       45977.574
+   50000         12.90         11.23        7563.810
+  100000         12.69         11.75        3708.841
+  200000         48.08         28.09        6916.908
+
+== A2. edit() alone on a pre-built buffer (100 reps) ==
+   lines     median_us   ns_per_doc_byte
+    1000        10.500            0.3098
+   50000        11.923            0.0067
+  200000        12.845            0.0018
+
+== B. 1000 append edits at end of a 100k-line document ==
+  total   : 10.25 ms
+  median  : 9.96 us/edit
+  max     : 44.93 us/edit
+  doc grew: 3588890 -> 3589890 bytes
+
+== C. offset_to_point() on 100k-line document (10k lookups) ==
+  median  : 120 ns/lookup
+  p99     : 571 ns/lookup
+  checksum: 499857184
+
+== D. undo grouping ==
+  compiled-in default group_interval : 300ms
+  300ms (production)   -> 1 undo step(s) for 2 rapid edits, text back to "hello"
+  0ns (test)           -> 2 undo step(s) for 2 rapid edits, text back to "hello"
+
+== E. rope chunk geometry, 100k-line document ==
+  bytes     : 3588890
+  chunks    : 28039
+  avg chunk : 128.0 bytes
+  max chunk : 128 bytes
+  slice 512B: median 1183 ns
