@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Zed&#x27;s UI runtime keeps an Rc/RefCell object graph alive across asynchronous work. That is only sound because the executor holding it is !Send, the priority queue is a weighted draw that renormalises over non-empty queues, and cross-replica ordering is a Lamport timestamp over a four-slot inline version vector. Each claim below is traced to a line of the pinned checkout, and the concurrency and fairness rules are covered by executed tests.">
 <title>One thread owns the state. The compiler knows. · Inside Zed</title>
+<link rel="canonical" href="https://bugnarokdev.github.io/inside-zed/runtime.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Inside Zed">
+<meta property="og:title" content="One thread owns the state. The compiler knows.">
+<meta property="og:description" content="Zed&#x27;s UI runtime keeps an Rc/RefCell object graph alive across asynchronous work. That is only sound because the executor holding it is !Send, the priority queue is a weighted draw that renormalises over non-empty queues, and cross-replica ordering is a Lamport timestamp over a four-slot inline version vector. Each claim below is traced to a line of the pinned checkout, and the concurrency and fairness rules are covered by executed tests.">
+<meta property="og:url" content="https://bugnarokdev.github.io/inside-zed/runtime.html">
+<meta property="og:image" content="https://bugnarokdev.github.io/inside-zed/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Inside Zed: a source-based study of Zed's text engine.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="One thread owns the state. The compiler knows.">
+<meta name="twitter:description" content="Zed&#x27;s UI runtime keeps an Rc/RefCell object graph alive across asynchronous work. That is only sound because the executor holding it is !Send, the priority queue is a weighted draw that renormalises over non-empty queues, and cross-replica ordering is a Lamport timestamp over a four-slot inline version vector. Each claim below is traced to a line of the pinned checkout, and the concurrency and fairness rules are covered by executed tests.">
+<meta name="twitter:image" content="https://bugnarokdev.github.io/inside-zed/assets/og.png">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./assets/og.png">
+<meta name="theme-color" content="#0f0f11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="./style.css">
 <link rel="preload" href="./assets/bugnarok-light.png" as="image">
 <script>

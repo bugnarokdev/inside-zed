@@ -26,6 +26,10 @@ CONTENT = ROOT / "site" / "content"
 ASSETS = ROOT / "site" / "assets"
 DOCS = ROOT / "docs"
 
+# Absolute base for canonical and social tags. GitHub Pages serves docs/ at this
+# path, so every page URL is BASE + "<slug>.html" (or BASE for the landing).
+SITE_BASE = "https://bugnarokdev.github.io/inside-zed/"
+
 # Sidebar structure in reading order. A page must exist to be linked.
 NAV: list[tuple[str, list[str]]] = [
     ("Get started", ["index", "getting-started"]),
@@ -525,8 +529,36 @@ def footer_html(ui: dict) -> str:
 
 
 def shell(*, title: str, description: str, body: str, current: str,
-          landing: bool = False) -> str:
+          landing: bool = False, noindex: bool = False) -> str:
     ui = UI["en"]
+    # Canonical and og:url must point at the page itself, not the site root:
+    # a shared deep link should preview its own title, not the landing one.
+    page_url = SITE_BASE if landing else f"{SITE_BASE}{current}.html"
+    og_image = f"{SITE_BASE}assets/og.png"
+    if noindex:
+        # 404.html is served at whatever bogus path a visitor typed, so it has
+        # no address of its own: a self-canonical there would assert that a
+        # page exists at /404.html. Declare it unindexed and let the og:url
+        # point at the site root instead.
+        canonical = '<meta name="robots" content="noindex">'
+        og_url = SITE_BASE
+    else:
+        canonical = f'<link rel="canonical" href="{page_url}">'
+        og_url = page_url
+    social = f"""{canonical}
+<meta property="og:type" content="{'website' if landing else 'article'}">
+<meta property="og:site_name" content="Inside Zed">
+<meta property="og:title" content="{html.escape(title)}">
+<meta property="og:description" content="{html.escape(description)}">
+<meta property="og:url" content="{og_url}">
+<meta property="og:image" content="{og_image}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Inside Zed: a source-based study of Zed's text engine.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{html.escape(title)}">
+<meta name="twitter:description" content="{html.escape(description)}">
+<meta name="twitter:image" content="{og_image}">"""
     lang_buttons = "".join(
         f'<button type="button" data-lang="{code}" aria-pressed="{"true" if code == "en" else "false"}">'
         f"{code.upper()}</button>" for code in ("en", "fr"))
@@ -539,6 +571,11 @@ def shell(*, title: str, description: str, body: str, current: str,
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="{html.escape(description)}">
 <title>{html.escape(title)} · Inside Zed</title>
+{social}
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./assets/og.png">
+<meta name="theme-color" content="#0f0f11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="./style.css">
 <link rel="preload" href="./assets/bugnarok-light.png" as="image">
 <script>
@@ -632,6 +669,50 @@ def build_landing() -> str:
         body=inner, current="index", landing=True)
 
 
+def build_404() -> str:
+    # Everything here is derived from NAV and PAGE_META so the page cannot drift
+    # from the real structure, and the list it announces is the list it prints.
+    investigations = len(PAGES) - 1  # PAGES includes the field guide
+    words = {8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
+    count = words.get(investigations, str(investigations))
+    items = []
+    for slug in PAGES:
+        label = PAGE_META[slug][0]
+        items.append(f'<li><a href="./{slug}.html">{html.escape(label)}</a></li>')
+    listing = "\n".join(items)
+    body = f"""<div class="pagehead"><div class="wrap">
+<div class="crumb">404</div>
+<h1>This page is not part of the study.</h1>
+<p>The address you followed does not match any page here. The site has {count} investigations and one field guide; the list below is all of them.</p>
+</div></div>
+<main class="wrap content"><article>
+<p>Nothing was measured at this address, so there is nothing to report about it. Rather than guess at what you meant, these are the pages that exist.</p>
+<ul>
+{listing}
+</ul>
+<div class="callout"><p><strong>NOTE</strong> - a link that used to work may have been renamed while the study was rewritten. If you arrived from somewhere else, that link is the thing to fix, not the address.</p></div>
+<p><a href="./index.html">Back to the overview</a>.</p>
+</article></main>"""
+    return shell(
+        title="Page not found",
+        description=f"No page exists at this address. The Inside Zed study has {count} investigations and one field guide; this page lists them all.",
+        body=body, current="404", noindex=True)
+
+
+def build_sitemap() -> str:
+    urls = [SITE_BASE] + [f"{SITE_BASE}{slug}.html" for slug in PAGES]
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for url in urls:
+        lines.append(f"  <url><loc>{url}</loc></url>")
+    lines.append("</urlset>")
+    return "\n".join(lines) + "\n"
+
+
+def build_robots() -> str:
+    return (f"User-agent: *\nAllow: /\n\nSitemap: {SITE_BASE}sitemap.xml\n")
+
+
 def main() -> int:
     check = "--check" in sys.argv
     stale: list[str] = []
@@ -650,6 +731,9 @@ def main() -> int:
     for i, slug in enumerate(PAGES):
         emit(DOCS / f"{slug}.html", build_page(read_page(slug), i, len(PAGES)))
     emit(DOCS / "index.html", build_landing())
+    emit(DOCS / "404.html", build_404())
+    emit(DOCS / "sitemap.xml", build_sitemap())
+    emit(DOCS / "robots.txt", build_robots())
 
     # assets are copied verbatim
     for asset in sorted(ASSETS.iterdir()):

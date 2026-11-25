@@ -7,3 +7,7 @@
 **/*.rs.bk
 # Cargo.lock IS committed: this is a binary crate, and the lock file pins the
 # exact dependency graph used for the published measurements.
+
+# Python bytecode from running site/build.py locally.
+__pycache__/
+*.pyc
