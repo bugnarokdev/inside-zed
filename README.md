@@ -19,13 +19,14 @@ An independent, source-based exploration of [Zed](https://github.com/zed-industr
 | [Architecture map](docs/architecture.html) | Workspace layers and major subsystems | First pass |
 | [Text engine](docs/text-engine.html) | Buffer, snapshots, fragments, history, and storage | In progress |
 | [Edit lifecycle](docs/edit-lifecycle.html) | End-to-end trace: operations, fragments, anchors, undo, and remote replay | Deep dive |
+| [Collaboration lab](docs/collaboration-lab.html) | Three replicas, divergent delivery orders, deferred operations, and convergence tests | Test trace |
 | [Locator deep dive](docs/locator.html) | Stable ordering positions and insertion patterns | Initial notes |
 | SumTree | Aggregated summaries, dimensions, cursors, and mutation | In progress |
 | Rope | Chunk storage, bitmap indexes, and coordinate conversion | In progress |
 | Collaboration | Replicas, clocks, operation ordering, and convergence | Partial trace |
 | GPUI | Rendering, layout, events, and platform integration | To investigate |
 
-**[Open the Inside Zed research site →](https://bugnarokdev.github.io/inside-zed/)** *(available after enabling GitHub Pages; see [publishing guide](docs/PUBLISHING.md))*
+**[Open the Inside Zed research site →](https://bugnarokdev.github.io/inside-zed/)**
 
 ## Evidence standard
 
