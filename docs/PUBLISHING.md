@@ -22,6 +22,7 @@ The initial deployment may take a short while. Check the Pages section in reposi
 - `docs/style.css` - dark visual system and responsive layout.
 - `docs/architecture.html` - workspace and subsystem map.
 - `docs/text-engine.html` - first-pass text engine study.
+- `docs/edit-lifecycle.html` - source-pinned edit lifecycle deep dive.
 - `docs/locator.html` - locator investigation.
 
 ## Updating the site
