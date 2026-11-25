@@ -24,7 +24,7 @@ An independent, source-based exploration of [Zed](https://github.com/zed-industr
 | Collaboration | Replicas, clocks, operation ordering, and convergence | To investigate |
 | GPUI | Rendering, layout, events, and platform integration | To investigate |
 
-**[Open the Inside Zed research site →](https://bugnarokdev.github.io/inside-zed/)**
+**[Open the Inside Zed research site →](https://bugnarokdev.github.io/inside-zed/)** *(available after enabling GitHub Pages; see [publishing guide](docs/PUBLISHING.md))*
 
 ## Evidence standard
 
