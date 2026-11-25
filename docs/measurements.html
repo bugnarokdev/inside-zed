@@ -178,7 +178,7 @@ cd harness &amp;&amp; cargo build --release
 
 # 3. run the adversarial tests against the same crates
 cargo test --release</pre>
-<p>Step 1 needs network access to GitHub. The toolchain is Rust 1.100.0, the version the pinned upstream commit names in its own <code>rust-toolchain.toml</code>; <code>harness/rust-toolchain.toml</code> pins the same value. Verified from a clean checkout: <code>cargo test --release</code> builds and passes all 19 tests on stable, so no nightly is needed.</p>
+<p>Step 1 needs network access to GitHub. The toolchain is Rust 1.100.0, the version the pinned upstream commit names in its own <code>rust-toolchain.toml</code>; <code>harness/rust-toolchain.toml</code> pins the same value. Verified from a clean checkout: <code>cargo test --release</code> builds and passes all 33 tests on stable, so no nightly is needed.</p>
 <div class="callout"><p><strong>REPRODUCIBILITY NOTE</strong> - raw output of all three runs is committed under <code>harness/results/</code> (<code>release-run.txt</code>, <code>-2</code>, <code>-3</code>). If a future run disagrees with a figure, the raw files are the reference and this page is what needs updating. Runs 1 and 2 came from the working copy; run 3 was produced from a fresh clone of the published repository. Expect timing medians to move by up to about 1.7× on the noisiest section; expect structural figures (bytes, chunk counts, checksum) to be exact.</p></div>
 
 </article><aside class="toc"><strong>ON THIS PAGE</strong><a href="#method">Method</a><a href="#insert">Insert scaling</a><a href="#append">Appends</a><a href="#lookup">Offset lookup</a><a href="#undo">Undo grouping</a><a href="#rope">Rope geometry</a><a href="#limits">Limits</a><a href="#reproduce">Reproduce</a></aside></main>

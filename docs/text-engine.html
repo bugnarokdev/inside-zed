@@ -21,6 +21,24 @@
 <p>The inspected chunk structure stores text alongside bitmap indexes for character boundaries, UTF-16 units, newlines, and tabs.</p>
 <div class="callout"><p><strong>VERIFIED</strong> - the rope uses a summary-indexed tree of chunks, and each chunk maintains coordinate-related metadata.</p></div>
 <div class="callout analysis"><p><strong>ANALYSIS</strong> - this arrangement is designed to accelerate conversions between byte offsets, character/UTF-16 positions, and row/column coordinates. Actual complexity and performance depend on the exact seek and update paths.</p></div>
+
+<p>The two paragraphs above were written from reading the source. The harness now exercises both crates directly: fourteen tests in <code>harness/tests/data_structures.rs</code>, run against the same pinned revision. Four findings contradict what the source alone suggests.</p>
+
+<table>
+<thead><tr><th>Claim under test</th><th>Measured result</th></tr></thead>
+<tbody>
+<tr><td>A clone of a <code>SumTree</code> is independent of its original on write</td><td>Holds. Pushing onto a clone of a 200-item tree leaves the original's summary and contents untouched.</td></tr>
+<tr><td>The root summary equals the fold of every item's summary</td><td>Holds for 300 items, and <code>extent</code> agrees with <code>summary</code>.</td></tr>
+<tr><td><code>Point.column</code> counts characters</td><td><strong>False.</strong> It counts UTF-8 bytes: after <code>"b"+"é"</code> the column is <code>3</code>, not <code>2</code>. <code>PointUtf16</code> is the character-space type.</td></tr>
+<tr><td><code>line_len</code> returns a character count</td><td><strong>False.</strong> <code>"béta"</code> reports <code>5</code> bytes, not <code>4</code> characters.</td></tr>
+<tr><td>A seek is unbiased</td><td><strong>False.</strong> <code>Bias::Left</code> attaches to the item ending at a boundary, <code>Bias::Right</code> to the one starting there. They agree only when the target falls strictly inside an item.</td></tr>
+<tr><td>Chunks stay within the 128-byte capacity</td><td>Holds across a 5,000-line document, and the chunks concatenate back to the source exactly.</td></tr>
+</tbody>
+</table>
+
+<p>The byte-versus-character result is the most consequential. <code>Point</code> is a byte column, which is why the crate carries a parallel <code>PointUtf16</code> type and why <code>offset_to_point</code> and <code>point_to_offset</code> round-trip only within that byte space. A reader who assumes <code>Point.column</code> is a character index will place cursors in the wrong place on any text with accents.</p>
+
+<div class="callout"><p><strong>VERIFIED</strong> - all fourteen tests pass on <code>rustc 1.100.0</code>, 0 failures, 0 warnings. Raw output is committed at <code>harness/results/suite-run.txt</code> alongside the rest of the suite.</p></div>
 <h2 id="locator">3. Locator and stable ordering</h2>
 <p>The locator implementation is in <a href="https://github.com/zed-industries/zed/blob/main/crates/text/src/locator.rs"><code>crates/text/src/locator.rs</code></a>. The inspected <code>Locator</code> is backed by a small vector of integer components. Its <code>between(lhs, rhs)</code> operation constructs an ordered identifier between existing positions.</p>
 <p>Tests exercise large sequential append patterns and repeated insertion at a cursor. These scenarios are useful evidence about intended workloads, not a universal complexity guarantee.</p>

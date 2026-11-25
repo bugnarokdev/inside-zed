@@ -1,21 +1,19 @@
 # Harness results: full suite at the pinned revision
-# date: 2026-11-25T06:24:53Z
+# generated: 2026-11-25T06:42:04Z
 # toolchain: rustc 1.100.0 (0ef1bc386 2026-11-09)
 # zed pin: 2664a0aa1eae5dabf8f8273c03f88d53061ca7dc
 
-running 0 tests
+     Running unittests src/main.rs (target/release/build/inside-zed-harness/6eafbf838bc91ab2/out/inside_zed_harness-6eafbf838bc91ab2)
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-running 0 tests
+     Running unittests src/bin/priority-draw.rs (target/release/build/inside-zed-harness/f878c8b7c44ecd18/out/priority_draw-f878c8b7c44ecd18)
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
      Running tests/adversarial.rs (target/release/build/inside-zed-harness/45894e71867d32e5/out/adversarial-45894e71867d32e5)
-running 5 tests
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
      Running tests/concurrency.rs (target/release/build/inside-zed-harness/65ae5a311f5e2300/out/concurrency-65ae5a311f5e2300)
-running 8 tests
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/data_structures.rs (target/release/build/inside-zed-harness/0a6b8f538081570b/out/data_structures-0a6b8f538081570b)
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
      Running tests/permutations.rs (target/release/build/inside-zed-harness/12f8d7fc726b9471/out/permutations-12f8d7fc726b9471)
-running 1 test
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
      Running tests/ui_runtime.rs (target/release/build/inside-zed-harness/6129b1c92b71a21c/out/ui_runtime-6129b1c92b71a21c)
-running 5 tests
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
