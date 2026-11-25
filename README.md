@@ -20,15 +20,17 @@ An independent, source-based exploration of [Zed](https://github.com/zed-industr
 | [Text engine](docs/text-engine.html) | Buffer, snapshots, fragments, history, and storage | In progress |
 | [Edit lifecycle](docs/edit-lifecycle.html) | End-to-end trace: operations, fragments, anchors, undo, and remote replay | Deep dive |
 | [Collaboration lab](docs/collaboration-lab.html) | Three replicas, divergent delivery orders, deferred operations, and convergence tests | Test trace |
-| [Invariants & adversarial testing](docs/invariants-and-adversarial-testing.html) | Audit of structural checks, randomized convergence, known regressions, and the executed adversarial matrix | Engineering audit, 6 tests executed |
+| [Invariants & adversarial testing](docs/invariants-and-adversarial-testing.html) | Audit of structural checks, randomized convergence, known regressions, and the executed adversarial matrix | Engineering audit, 5 tests executed |
 | [Measured, not guessed](docs/measurements.html) | Insert latency vs document size, offset lookup cost, undo grouping, and rope chunk geometry | Real run, raw output committed |
-| [UI runtime & concurrency](docs/runtime.html) | The `!Send` local executor, weighted priority fairness, and Lamport ordering across replicas | Engineering audit, 13 tests executed |
+| [UI runtime & concurrency](docs/runtime.html) | The `!Send` local executor, weighted priority fairness, and Lamport ordering across replicas | Engineering audit, 5 tests executed |
 | [Locator deep dive](docs/locator.html) | Stable ordering positions and insertion patterns | Initial notes |
 | SumTree | Aggregated summaries, dimensions, cursors, and mutation | In progress |
 | Rope | Chunk storage, bitmap indexes, and coordinate conversion | In progress |
 | GPUI | Rendering, layout, events, and platform integration | Partly covered by the runtime audit |
 
 **[Open the Inside Zed research site →](https://bugnarokdev.github.io/inside-zed/)**
+
+The site is built from `site/` into `docs/` by `site/build.py`; `docs/` is generated, so edit `site/` and rebuild instead of patching the output. `.github/workflows/docs.yml` fails when the two drift apart. Every page carries a language selector: English is the default, French is a full translation loaded from `site/assets/i18n-fr.json`.
 
 ## Executed evidence
 
