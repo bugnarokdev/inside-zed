@@ -200,6 +200,57 @@
     }
   }
 
+  /* Measured values sit in table cells and stay in their published form, which
+   * is decimal-point. French reads decimal-comma, so format them on switch.
+   * Only exact numeric cells are touched: prose keeps its translation, and
+   * headings, versions and file references are never rewritten. The snapshot
+   * taken before translation restores the English exactly on switch back. */
+  var NUMERIC = /^\d{1,3}(?:[\u00a0 ]\d{3})*(?:[.,]\d+)?(?:\s?(?:\u00d7|%|ms|µs|ns|s|B|KB|MB|GB))?$/;
+
+  function formatNumbersFr(root) {
+    var tables = root.querySelectorAll("table.num, table");
+    var cells = [];
+    for (var t = 0; t < tables.length; t++) {
+      var inner = tables[t].querySelectorAll("td, th");
+      for (var k = 0; k < inner.length; k++) cells.push(inner[k]);
+    }
+    /* Highlighted figures outside tables (the .stat blocks) are measured values
+     * too, and appear right beside formatted tables on the same page. */
+    var stats = root.querySelectorAll(".stat b, .stat strong");
+    for (var s = 0; s < stats.length; s++) cells.push(stats[s]);
+    for (var i = 0; i < cells.length; i++) {
+      var el = cells[i];
+      if (el.children.length) continue;
+      /* Mutate the existing text node rather than assigning textContent:
+       * snapshot() holds a reference to that node, so replacing it would make
+       * the English impossible to restore exactly. */
+      var node = el.firstChild;
+      if (!node || node.nodeType !== 3) continue;
+      var raw = node.nodeValue;
+      var txt = raw.trim();
+      if (!NUMERIC.test(txt)) continue;
+      /* Split the trailing unit (%, x, ms, µs, ns, B...) from the number: only
+       * the decimal separator changes, and a unit that already has a space
+       * keeps it while a bare % gets the French non-breaking space. */
+      var m = txt.match(/^([\d\u00a0 ]+(?:[.,]\d+)?)(\s?\S*)$/);
+      if (!m) continue;
+      var num = m[1].replace(/\./g, ",");
+      var unit = m[2];
+      if (unit) {
+        /* Keep the spacing the source used: "1.21x" is tight, "128 B" and
+         * "11.15 ms" are spaced. Only % is normalised, to the French
+         * non-breaking space. */
+        var spaced = /^\s/.test(unit);
+        var bare = unit.replace(/^\s+/, "");
+        if (bare === "%") unit = "\u00a0%";
+        else unit = (spaced ? " " : "") + bare;
+      }
+      var lead = raw.slice(0, raw.length - raw.replace(/^\s+/, "").length);
+      var tail = raw.slice(raw.replace(/\s+$/, "").length);
+      node.nodeValue = lead + num + unit + tail;
+    }
+  }
+
   function setLang(lang) {
     var buttons = document.querySelectorAll("[data-lang]");
     for (var i = 0; i < buttons.length; i++) {
@@ -215,6 +266,7 @@
         restore();
         translate(document.body, table, false);
         translateTitle(table);
+        formatNumbersFr(document.body);
       });
     } else {
       restore();
