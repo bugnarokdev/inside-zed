@@ -24,7 +24,6 @@ An independent, source-based exploration of [Zed](https://github.com/zed-industr
 | [Locator deep dive](docs/locator.html) | Stable ordering positions and insertion patterns | Initial notes |
 | SumTree | Aggregated summaries, dimensions, cursors, and mutation | In progress |
 | Rope | Chunk storage, bitmap indexes, and coordinate conversion | In progress |
-| Collaboration | Replicas, clocks, operation ordering, and convergence | Partial trace |
 | GPUI | Rendering, layout, events, and platform integration | To investigate |
 
 **[Open the Inside Zed research site →](https://bugnarokdev.github.io/inside-zed/)**
