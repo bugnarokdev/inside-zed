@@ -443,7 +443,14 @@ def read_page(slug: str) -> dict:
     if not (h1 and article):
         raise SystemExit(f'{path}: need <h1> and <article class="article">')
 
-    title = html.unescape(re.sub(r"<[^>]+>", "", h1.group(1))).strip()
+    # A <br> inside the h1 is a visual line break, not a word boundary: turn it
+    # into a space before stripping tags, otherwise "Invariants<br>under
+    # pressure." reaches the document title as "Invariantsunder pressure.".
+    def flatten(fragment: str) -> str:
+        spaced = re.sub(r"<br\s*/?>", " ", fragment, flags=re.I)
+        return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", spaced))).strip()
+
+    title = flatten(h1.group(1))
     return {
         "slug": slug,
         "crumb": crumb.group(1).strip() if crumb else "",
@@ -451,8 +458,7 @@ def read_page(slug: str) -> dict:
         "title_html": h1.group(1).strip(),
         "lede": lede.group(1).strip() if lede else "",
         "body": article.group(1).strip(),
-        "description": (html.unescape(re.sub(r"<[^>]+>", "", lede.group(1))).strip()
-                        if lede else title),
+        "description": flatten(lede.group(1)) if lede else title,
     }
 
 
