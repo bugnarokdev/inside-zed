@@ -137,8 +137,10 @@
     }
   }
 
-  /* Remember the original English so switching back is exact. */
+  /* Remember the original English so switching back is exact, including the
+     attributes that carry reader-visible copy. */
   var original = null;
+  var originalAttrs = null;
 
   function snapshot() {
     original = [];
@@ -147,11 +149,29 @@
       var n = walker.currentNode;
       if (n.nodeValue && n.nodeValue.trim()) original.push([n, n.nodeValue]);
     }
+    originalAttrs = [];
+    var tagged = document.querySelectorAll("[data-i18n-attr]");
+    for (var i = 0; i < tagged.length; i++) {
+      var el = tagged[i];
+      var names = el.getAttribute("data-i18n-attr").split(",");
+      for (var j = 0; j < names.length; j++) {
+        var name = names[j].trim();
+        if (name) originalAttrs.push([el, name, el.getAttribute(name)]);
+      }
+    }
   }
 
   function restore() {
-    if (!original) return;
-    for (var i = 0; i < original.length; i++) original[i][0].nodeValue = original[i][1];
+    if (original) {
+      for (var i = 0; i < original.length; i++) original[i][0].nodeValue = original[i][1];
+    }
+    if (originalAttrs) {
+      for (var j = 0; j < originalAttrs.length; j++) {
+        var pair = originalAttrs[j];
+        if (pair[2] === null) pair[0].removeAttribute(pair[1]);
+        else pair[0].setAttribute(pair[1], pair[2]);
+      }
+    }
   }
 
   function setLang(lang) {

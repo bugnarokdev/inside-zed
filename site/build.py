@@ -509,7 +509,7 @@ def footer_html(ui: dict) -> str:
 <a href="./index.html" class="foot-logo" aria-label="BUGNARÖK" style="height:52px"></a>
 <p class="foot-tag">{ui["independent"]}</p>
 </div>
-<nav class="foot-nav" aria-label="Secondary">
+<nav class="foot-nav" aria-label="Secondary" data-i18n-attr="aria-label">
 <ul>
 {"".join(items)}
 </ul>
@@ -554,17 +554,17 @@ def shell(*, title: str, description: str, body: str, current: str,
 <body>
 <header class="topbar">
 <div class="topbar-inner">
-<button class="tb-btn menu-btn" type="button" data-menu aria-label="{ui["menu_label"]}">☰</button>
+<button class="tb-btn menu-btn" type="button" data-menu aria-label="{ui["menu_label"]}" data-i18n-attr="aria-label">☰</button>
 <a class="brand" href="./index.html"><span class="dot"></span>INSIDE ZED</a>
 <span class="spacer"></span>
 <a class="tb-link" href="{UPSTREAM}" target="_blank" rel="noreferrer">{ui["upstream"]} ↗</a>
 <a class="tb-link" href="{REPO}" target="_blank" rel="noreferrer">{ui["repo"]} ↗</a>
-<div class="lang" role="group" aria-label="{ui["lang_label"]}">{lang_buttons}</div>
-<button class="tb-btn" type="button" data-theme aria-label="{ui["theme_label"]}">◐</button>
+<div class="lang" role="group" aria-label="{ui["lang_label"]}" data-i18n-attr="aria-label">{lang_buttons}</div>
+<button class="tb-btn" type="button" data-theme aria-label="{ui["theme_label"]}" data-i18n-attr="aria-label">◐</button>
 </div>
 </header>
 <div class="shell">
-<nav class="sidebar" aria-label="Docs">
+<nav class="sidebar" aria-label="Docs" data-i18n-attr="aria-label">
 {sidebar_html(current)}
 <div class="side-meta">
 Zed @ <code>2664a0aa</code><br>

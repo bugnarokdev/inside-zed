@@ -363,6 +363,7 @@
  "Deterministic results": "Résultats déterministes",
  "Deterministic three-replica example": "Exemple déterministe à trois réplicas",
  "Directly supported by inspected source code or tests.": "Directement étayé par du code source ou des tests inspectés.",
+ "Docs": "Documentation",
  "Document growth is exactly the bytes written: 1 000 single-byte edits add exactly 1 000 bytes. The rope stores text without padding or per-edit slack, so no capacity slack is hidden between what the document contains and what it costs.": "La croissance du document correspond exactement aux octets écrits : 1 000 éditions d'un seul octet ajoutent exactement 1 000 octets. La rope stocke le texte sans remplissage ni marge par édition, donc aucune marge de capacité ne se cache entre ce que le document contient et ce qu'il coûte.",
  "Documentation, source links, diagrams, questions, and future benchmark plans live in the GitHub repository.": "Documentation, liens vers le source, schémas, questions et projets de benchmark à venir vivent dans le dépôt GitHub.",
  "Duplicate delivery": "Livraison en double",
