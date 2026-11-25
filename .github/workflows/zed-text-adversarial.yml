@@ -1,0 +1,51 @@
+name: Zed text engine adversarial tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - research/patches/text-adversarial-tests.patch
+      - .github/workflows/zed-text-adversarial.yml
+
+permissions:
+  contents: read
+
+jobs:
+  text-crate-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+      CC: clang
+      CXX: clang++
+    steps:
+      - name: Checkout research repository
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Zed source
+        uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          ref: 2664a0aa1eae5dabf8f8273c03f88d53061ca7dc
+          path: upstream
+          fetch-depth: 1
+
+      - name: Validate patch before applying
+        run: |
+          git -C upstream apply --check "$GITHUB_WORKSPACE/research/patches/text-adversarial-tests.patch"
+          git -C upstream apply "$GITHUB_WORKSPACE/research/patches/text-adversarial-tests.patch"
+
+      - name: Install Zed Linux build dependencies
+        working-directory: upstream
+        run: ./script/linux
+
+      - name: Show Rust toolchain
+        working-directory: upstream
+        run: rustc --version && cargo --version
+
+      - name: Run text crate tests
+        working-directory: upstream
+        run: cargo test -p text -- --nocapture

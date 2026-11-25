@@ -1,0 +1,114 @@
+diff --git a/crates/text/src/tests.rs b/crates/text/src/tests.rs
+index ff00f9b96478f36210b88ebc1dbb0f0a1cd7b356..0000000 100644
+--- a/crates/text/src/tests.rs
++++ b/crates/text/src/tests.rs
+@@ -988,6 +988,109 @@ fn test_random_concurrent_edits(mut rng: StdRng) {
+         buffer.check_invariants();
+     }
+ }
+ 
++#[test]
++fn test_adversarial_same_cursor_insertions_converge() {
++    let buffer_id = BufferId::new(1).unwrap();
++    let mut a = Buffer::new(ReplicaId::new(1), buffer_id, "ab");
++    let mut b = Buffer::new(ReplicaId::new(2), buffer_id, "ab");
++
++    let op_a = a.edit([(1..1, "X")]);
++    let op_b = b.edit([(1..1, "Y")]);
++
++    a.apply_ops([op_b]);
++    b.apply_ops([op_a]);
++
++    assert_eq!(a.text(), "aYXb");
++    assert_eq!(b.text(), "aYXb");
++    a.check_invariants();
++    b.check_invariants();
++}
++
++#[test]
++fn test_adversarial_concurrent_delete_preserves_unobserved_insert() {
++    let buffer_id = BufferId::new(1).unwrap();
++    let mut a = Buffer::new(ReplicaId::new(1), buffer_id, "abcdef");
++    let mut b = Buffer::new(ReplicaId::new(2), buffer_id, "abcdef");
++
++    let delete = a.edit([(2..5, "")]);
++    let insert = b.edit([(3..3, "X")]);
++
++    a.apply_ops([insert.clone()]);
++    b.apply_ops([delete.clone()]);
++
++    let mut c = Buffer::new(ReplicaId::new(3), buffer_id, "abcdef");
++    c.apply_ops([delete.clone(), insert.clone()]);
++    let mut d = Buffer::new(ReplicaId::new(4), buffer_id, "abcdef");
++    d.apply_ops([insert, delete]);
++
++    for buffer in [&a, &b, &c, &d] {
++        assert_eq!(buffer.text(), "abXf");
++        buffer.check_invariants();
++    }
++}
++
++#[test]
++fn test_adversarial_overlapping_deletes_undo_independently() {
++    let buffer_id = BufferId::new(1).unwrap();
++    let mut a = Buffer::new(ReplicaId::new(1), buffer_id, "abcdef");
++    let mut b = Buffer::new(ReplicaId::new(2), buffer_id, "abcdef");
++
++    let delete_a = a.edit([(1..4, "")]);
++    let delete_b = b.edit([(2..5, "")]);
++
++    a.apply_ops([delete_b]);
++    b.apply_ops([delete_a]);
++    assert_eq!(a.text(), "af");
++    assert_eq!(b.text(), "af");
++
++    let (_, undo_a) = a.undo().unwrap();
++    b.apply_ops([undo_a]);
++    assert_eq!(a.text(), "abf");
++    assert_eq!(b.text(), "abf");
++    a.check_invariants();
++    b.check_invariants();
++
++    let (_, undo_b) = b.undo().unwrap();
++    a.apply_ops([undo_b]);
++    assert_eq!(a.text(), "abcdef");
++    assert_eq!(b.text(), "abcdef");
++    a.check_invariants();
++    b.check_invariants();
++}
++
++#[test]
++fn test_adversarial_deferred_operation_applies_after_dependency() {
++    let buffer_id = BufferId::new(1).unwrap();
++    let mut sender = Buffer::new(ReplicaId::new(1), buffer_id, "ab");
++    let mut receiver = Buffer::new(ReplicaId::new(2), buffer_id, "ab");
++
++    let first = sender.edit([(1..1, "X")]);
++    let second = sender.edit([(2..2, "Y")]);
++
++    receiver.apply_ops([second]);
++    assert!(receiver.has_deferred_ops());
++
++    receiver.apply_ops([first]);
++    assert!(!receiver.has_deferred_ops());
++    assert_eq!(receiver.text(), "aXYb");
++    receiver.check_invariants();
++}
++
++#[test]
++fn test_adversarial_duplicate_delivery_is_idempotent() {
++    let buffer_id = BufferId::new(1).unwrap();
++    let mut sender = Buffer::new(ReplicaId::new(1), buffer_id, "ab");
++    let mut receiver = Buffer::new(ReplicaId::new(2), buffer_id, "ab");
++
++    let operation = sender.edit([(1..1, "X")]);
++    receiver.apply_ops([operation.clone(), operation.clone()]);
++    assert_eq!(receiver.text(), "aXb");
++
++    receiver.apply_ops([operation]);
++    assert_eq!(receiver.text(), "aXb");
++    receiver.check_invariants();
++}
++
+ #[test]
+ fn test_new_normalized_splits_large_base_text() {
