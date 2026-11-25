@@ -23,6 +23,8 @@ The initial deployment may take a short while. Check the Pages section in reposi
 - `docs/architecture.html` - workspace and subsystem map.
 - `docs/text-engine.html` - first-pass text engine study.
 - `docs/edit-lifecycle.html` - source-pinned edit lifecycle deep dive.
+- `docs/collaboration-lab.html` - concurrent replica walkthrough.
+- `docs/invariants-and-adversarial-testing.html` - invariant audit and adversarial test plan.
 - `docs/locator.html` - locator investigation.
 
 ## Updating the site
