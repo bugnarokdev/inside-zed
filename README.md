@@ -20,6 +20,7 @@ An independent, source-based exploration of [Zed](https://github.com/zed-industr
 | [Text engine](docs/text-engine.html) | Buffer, snapshots, fragments, history, and storage | In progress |
 | [Edit lifecycle](docs/edit-lifecycle.html) | End-to-end trace: operations, fragments, anchors, undo, and remote replay | Deep dive |
 | [Collaboration lab](docs/collaboration-lab.html) | Three replicas, divergent delivery orders, deferred operations, and convergence tests | Test trace |
+| [Invariants & adversarial testing](docs/invariants-and-adversarial-testing.html) | Audit of structural checks, randomized convergence, known regressions, and conflict test matrix | Engineering audit |
 | [Locator deep dive](docs/locator.html) | Stable ordering positions and insertion patterns | Initial notes |
 | SumTree | Aggregated summaries, dimensions, cursors, and mutation | In progress |
 | Rope | Chunk storage, bitmap indexes, and coordinate conversion | In progress |
