@@ -26,14 +26,16 @@ CONTENT = ROOT / "site" / "content"
 ASSETS = ROOT / "site" / "assets"
 DOCS = ROOT / "docs"
 
-# The examination date is the only fact on this site that does not come from
-# the source tree: it is a calendar entry, and it is published as information
-# because it can move. It is stored once, as ISO 8601, and both languages are
-# derived from it, so an edit cannot leave one language behind. The landing
-# page renders it and `--check` verifies the README carries the same value, so
-# the two cannot drift apart. An empty value means the date is not announced
-# yet: no banner is rendered, and the layout is never filled with a guess.
-EXAM_DATE = ""
+# The date below is a calendar fact, not a source-tree fact: it is the date of
+# the last commit of the study, stated for information only. It is allowed to
+# age: if the site is not refreshed for a month, it simply keeps showing the
+# date of the last refresh, which is the honest answer. It is stored once, as
+# ISO 8601, so both languages derive from the same value and an edit cannot
+# leave one language behind. `--check` verifies the README carries the same
+# value, so the page and the README cannot drift apart. Refresh it when the
+# study is refreshed; nothing breaks if you forget.
+STATED_DATE = "2026-11-26"
+
 
 FR_MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
              "août", "septembre", "octobre", "novembre", "décembre"]
@@ -367,23 +369,22 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
 .note p:first-child{margin-bottom:8px}
 .note strong{font:600 10.5px/1 var(--mono);letter-spacing:.12em;color:var(--accent)}
 
-/* Examination date banner. The date is a calendar entry, not a source-tree
-   fact, so it is marked as information that can move rather than as evidence.
-   Both languages are rendered into the page and exactly one is displayed,
-   keyed on the document language: the value never has to travel through the
-   translation dictionary, so changing it cannot leave a stale French string
-   behind. */
-.exam{margin:0 0 30px;padding:13px 17px;border:1px solid var(--border);
+/* Snapshot banner. The date is a calendar fact about the study, not evidence
+   about Zed, so it is labelled as information rather than as a finding. Both
+   languages are rendered into the page and exactly one is displayed, keyed on
+   the document language: the value never travels through the translation
+   dictionary, so changing it cannot leave a stale French string behind. */
+.stamp{margin:0 0 30px;padding:13px 17px;border:1px solid var(--border);
   border-left:3px solid var(--accent);border-radius:0 9px 9px 0;
-  background:var(--surface);max-width:66ch}
-.exam p{margin:0;font-size:14.5px;line-height:1.55;color:var(--text-2)}
-.exam .k{display:block;margin-bottom:5px;font:600 9.5px/1 var(--mono);
+  background:var(--surface);max-width:68ch}
+.stamp p{margin:0;font-size:14.5px;line-height:1.55;color:var(--text-2)}
+.stamp .k{display:block;margin-bottom:5px;font:600 9.5px/1 var(--mono);
   letter-spacing:.13em;text-transform:uppercase;color:var(--accent)}
-.exam time{font-weight:700;color:var(--text)}
-.exam .note-inline{color:var(--muted)}
-.exam [data-lang-fr]{display:none}
-html[lang="fr"] .exam [data-lang-en]{display:none}
-html[lang="fr"] .exam [data-lang-fr]{display:inline}
+.stamp time{font-weight:700;color:var(--text)}
+.stamp .note-inline{color:var(--muted)}
+.stamp [data-lang-fr]{display:none}
+html[lang="fr"] .stamp [data-lang-en]{display:none}
+html[lang="fr"] .stamp [data-lang-fr]{display:inline}
 .landing h1 .accent{color:var(--accent)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .item{display:block;padding:15px 16px;border:1px solid var(--border);border-radius:10px;
@@ -500,50 +501,50 @@ def brk() -> str:
     return '<span class="brk" aria-hidden="true">[<span class="fill"></span>]</span>'
 
 
-def exam_parts() -> tuple[int, int, int] | None:
-    """Parse EXAM_DATE, refusing anything that is not a real calendar day."""
-    if not EXAM_DATE:
+def stamp_parts() -> tuple[int, int, int] | None:
+    """Parse STATED_DATE, refusing anything that is not a real calendar day."""
+    if not STATED_DATE:
         return None
-    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", EXAM_DATE.strip())
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", STATED_DATE.strip())
     if not m:
-        raise SystemExit(f"EXAM_DATE must be ISO 8601 (YYYY-MM-DD), got {EXAM_DATE!r}")
+        raise SystemExit(f"STATED_DATE must be ISO 8601 (YYYY-MM-DD), got {STATED_DATE!r}")
     year, month, day = (int(g) for g in m.groups())
     if not 1 <= month <= 12:
-        raise SystemExit(f"EXAM_DATE month out of range: {EXAM_DATE!r}")
+        raise SystemExit(f"STATED_DATE month out of range: {STATED_DATE!r}")
     # datetime validates the day against the real month length, leap years included.
     import datetime
     try:
         datetime.date(year, month, day)
     except ValueError:
-        raise SystemExit(f"EXAM_DATE is not a real day: {EXAM_DATE!r}")
+        raise SystemExit(f"STATED_DATE is not a real day: {STATED_DATE!r}")
     return year, month, day
 
 
-def exam_text(lang: str) -> tuple[str, str, str]:
+def stamp_text(lang: str) -> tuple[str, str, str]:
     """Return (machine value, human date, surrounding sentence) for one language."""
-    parts = exam_parts()
+    parts = stamp_parts()
     if parts is None:
         return "", "", ""
     year, month, day = parts
     if lang == "fr":
         human = f"{day} {FR_MONTHS[month - 1]} {year}"
-        sentence = ("Donnée à titre d'information : elle peut évoluer "
-                    "rapidement, la valeur affichée ici est celle à jour.")
+        sentence = ("Dernière mise à jour de l'étude, à titre indicatif : elle "
+                    "n'est pas réactualisée automatiquement et peut donc être "
+                    "périmée.")
     else:
         human = f"{day} {EN_MONTHS[month - 1]} {year}"
-        sentence = ("Stated for information only and subject to change at short "
-                    "notice; the value shown here is the current one.")
-    return EXAM_DATE.strip(), human, sentence
+        sentence = ("Last update of this study, stated for information only: it "
+                    "is not refreshed automatically and may therefore be stale.")
+    return STATED_DATE.strip(), human, sentence
 
 
-def exam_banner() -> str:
-    if exam_parts() is None:
+def stamp_banner() -> str:
+    if stamp_parts() is None:
         return ""
-    iso, human_en, sentence_en = exam_text("en")
-    _iso_fr, human_fr, sentence_fr = exam_text("fr")
-    return f"""<div class="exam">
-<p><span class="k"><span data-lang-en>Examination date</span>\
-<span data-lang-fr>Date d'examen</span></span>
+    iso, human_en, sentence_en = stamp_text("en")
+    _iso_fr, human_fr, sentence_fr = stamp_text("fr")
+    return f"""<div class="stamp">
+<p><span class="k">Deep technical exploration</span>
 <span data-lang-en><time datetime="{iso}">{human_en}</time>. {sentence_en}</span>
 <span data-lang-fr><time datetime="{iso}">{human_fr}</time>. {sentence_fr}</span>
 </p>
@@ -552,43 +553,43 @@ def exam_banner() -> str:
 
 # The README is English-only and is not generated, so the single source cannot
 # write the whole file. It owns one marked block instead: the text between the
-# markers is regenerated from EXAM_DATE, and `--check` fails when it lags.
-README_START = "<!-- exam-date:start -->"
-README_END = "<!-- exam-date:end -->"
+# markers is regenerated from STATED_DATE, and `--check` fails when it lags.
+README_START = "<!-- stated-date:start -->"
+README_END = "<!-- stated-date:end -->"
 
 # Marker the landing source carries where the banner belongs. The build swaps
-# it for exam_banner(); the marker itself is never published.
-LANDING_EXAM_SLOT = "<!-- exam-date -->"
+# it for stamp_banner(); the marker itself is never published.
+LANDING_STAMP_SLOT = "<!-- stated-date -->"
 
 
 def readme_block() -> str:
-    parts = exam_parts()
+    parts = stamp_parts()
     if parts is None:
-        body = ("**Examination date: not announced yet.** The date is published "
-                "here and on the site as soon as it is fixed.")
+        body = "**Deep technical exploration.** No update date recorded yet."
     else:
-        _iso, human, sentence = exam_text("en")
-        body = f"**Examination date: {human}.** {sentence}"
+        _iso, human, _sentence = stamp_text("en")
+        body = (f"**Deep technical exploration**, last updated {human}. "
+                "Stated for information only; it is not refreshed automatically.")
     return f"{README_START}\n{body}\n{README_END}"
 
 
 def sync_readme(check: bool) -> list[str]:
-    """Keep the README block equal to EXAM_DATE, or report that it lags."""
+    """Keep the README block equal to STATED_DATE, or report that it lags."""
     path = ROOT / "README.md"
     text = path.read_text(encoding="utf-8")
     start = text.find(README_START)
     end = text.find(README_END)
     if start < 0 or end < 0 or end < start:
-        return ["README.md: exam-date markers missing"]
+        return ["README.md: stated-date markers missing"]
     end += len(README_END)
     current = text[start:end]
     wanted = readme_block()
     if current == wanted:
         return []
     if check:
-        return ["README.md: exam-date block out of sync with EXAM_DATE"]
+        return ["README.md: stated-date block out of sync with STATED_DATE"]
     path.write_text(text[:start] + wanted + text[end:], encoding="utf-8")
-    return ["README.md: exam-date block updated"]
+    return ["README.md: stated-date block updated"]
 
 
 def sidebar_html(current: str) -> str:
@@ -786,15 +787,15 @@ def build_page(page: dict, i: int, total: int) -> str:
 
 def build_landing() -> str:
     inner = (CONTENT / "index.html").read_text(encoding="utf-8").strip()
-    # The banner is generated from EXAM_DATE at build time. Writing the date by
-    # hand into this source would give it a second home and let the two drift.
-    # With no date announced the slot disappears with its own line, so the
+    # The banner is generated from STATED_DATE at build time. Writing the date
+    # by hand into this source would give it a second home and let the two
+    # drift. With no date recorded the slot disappears with its own line, so the
     # landing keeps its spacing instead of gaining a blank gap.
-    banner = exam_banner()
+    banner = stamp_banner()
     if banner:
-        inner = inner.replace(LANDING_EXAM_SLOT, banner)
+        inner = inner.replace(LANDING_STAMP_SLOT, banner)
     else:
-        inner = inner.replace(LANDING_EXAM_SLOT + "\n", "").replace(LANDING_EXAM_SLOT, "")
+        inner = inner.replace(LANDING_STAMP_SLOT + "\n", "").replace(LANDING_STAMP_SLOT, "")
     return shell(
         title="Under the hood",
         description="An independent, source-based technical exploration of Zed's Rust engine.",

@@ -255,23 +255,22 @@ a:hover>.brk .fill,a[aria-current="page"]>.brk .fill{width:.9em}
 .note p:first-child{margin-bottom:8px}
 .note strong{font:600 10.5px/1 var(--mono);letter-spacing:.12em;color:var(--accent)}
 
-/* Examination date banner. The date is a calendar entry, not a source-tree
-   fact, so it is marked as information that can move rather than as evidence.
-   Both languages are rendered into the page and exactly one is displayed,
-   keyed on the document language: the value never has to travel through the
-   translation dictionary, so changing it cannot leave a stale French string
-   behind. */
-.exam{margin:0 0 30px;padding:13px 17px;border:1px solid var(--border);
+/* Snapshot banner. The date is a calendar fact about the study, not evidence
+   about Zed, so it is labelled as information rather than as a finding. Both
+   languages are rendered into the page and exactly one is displayed, keyed on
+   the document language: the value never travels through the translation
+   dictionary, so changing it cannot leave a stale French string behind. */
+.stamp{margin:0 0 30px;padding:13px 17px;border:1px solid var(--border);
   border-left:3px solid var(--accent);border-radius:0 9px 9px 0;
-  background:var(--surface);max-width:66ch}
-.exam p{margin:0;font-size:14.5px;line-height:1.55;color:var(--text-2)}
-.exam .k{display:block;margin-bottom:5px;font:600 9.5px/1 var(--mono);
+  background:var(--surface);max-width:68ch}
+.stamp p{margin:0;font-size:14.5px;line-height:1.55;color:var(--text-2)}
+.stamp .k{display:block;margin-bottom:5px;font:600 9.5px/1 var(--mono);
   letter-spacing:.13em;text-transform:uppercase;color:var(--accent)}
-.exam time{font-weight:700;color:var(--text)}
-.exam .note-inline{color:var(--muted)}
-.exam [data-lang-fr]{display:none}
-html[lang="fr"] .exam [data-lang-en]{display:none}
-html[lang="fr"] .exam [data-lang-fr]{display:inline}
+.stamp time{font-weight:700;color:var(--text)}
+.stamp .note-inline{color:var(--muted)}
+.stamp [data-lang-fr]{display:none}
+html[lang="fr"] .stamp [data-lang-en]{display:none}
+html[lang="fr"] .stamp [data-lang-fr]{display:inline}
 .landing h1 .accent{color:var(--accent)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .item{display:block;padding:15px 16px;border:1px solid var(--border);border-radius:10px;

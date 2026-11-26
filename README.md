@@ -2,9 +2,9 @@
 
 **Under the hood of a modern Rust editor.**
 
-<!-- exam-date:start -->
-**Examination date: not announced yet.** The date is published here and on the site as soon as it is fixed.
-<!-- exam-date:end -->
+<!-- stated-date:start -->
+**Deep technical exploration**, last updated 26 November 2026. Stated for information only; it is not refreshed automatically.
+<!-- stated-date:end -->
 
 An independent, source-based exploration of [Zed](https://github.com/zed-industries/zed): its data structures, text engine, UI runtime, concurrency model, and performance trade-offs.
 
