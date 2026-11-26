@@ -2,6 +2,10 @@
 
 **Under the hood of a modern Rust editor.**
 
+<!-- exam-date:start -->
+**Examination date: not announced yet.** The date is published here and on the site as soon as it is fixed.
+<!-- exam-date:end -->
+
 An independent, source-based exploration of [Zed](https://github.com/zed-industries/zed): its data structures, text engine, UI runtime, concurrency model, and performance trade-offs.
 
 <p align="center">
